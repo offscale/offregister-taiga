@@ -1,0 +1,4 @@
+fabric
+https://api.github.com/repos/offscale/offregister_fab_utils/zipball#egg=offregister_fab_utils
+https://api.github.com/repos/offscale/offregister_web_servers/zipball#egg=offregister_web_servers
+https://api.github.com/repos/offscale/offregister_postgres/zipball#egg=offregister_postgres
