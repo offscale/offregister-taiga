@@ -18,34 +18,6 @@ from offregister_taiga.ubuntu.utils import install_python_taiga_deps
 taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
 
 
-def _install_events(taiga_root):
-    rabbitmq.install0()  # install_rabbitmq()
-    user = 'taiga'
-
-    if sudo('rabbitmqctl list_users | grep -q {user}'.format(user=user), warn_only=True).failed:
-        password = rabbitmq.create_user1(  # create_rabbitmq_user1,
-            rmq_user=user, rmq_vhost=user)
-
-        rmq_uri = 'amqp://{user}:{password}@localhost:5672/{user}'.format(user=user, password=password)
-
-        append('{taiga_root}/taiga-back/settings/local.py'.format(taiga_root=taiga_root),
-               'EVENTS_PUSH_BACKEND = "taiga.events.backends.rabbitmq.EventsPushBackend"'
-               'EVENTS_PUSH_BACKEND_OPTIONS = {"url": "' + rmq_uri + '"}')
-    event_root = '{taiga_root}/taiga-events'.format(taiga_root=taiga_root)
-    clone_or_update(team='taigaio', repo='taiga-events', branch='master', to_dir=event_root)
-    with cd(event_root):
-        build_node_app(kwargs=dict(npm_global_packages=('coffeescript',), node_version='lts'),
-                       run_cmd=run)
-    upload_template(taiga_dir('config.json'), event_root, context={'RMQ_URI': rmq_uri})
-    user = run('echo $USER', quiet=True)
-    return install_upgrade_service(service_name='taiga_events',
-                                   context={
-                                       'User': user, 'Group': run('id -gn') or user,
-                                       'Environments': '', 'WorkingDirectory': event_root,
-                                       'ExecStart': "/bin/bash -c 'PATH=/home/{user}/n/bin:$PATH /home/{user}/n/bin/coffee index.coffee'".format(
-                                           user=user)})
-
-
 def install0(*args, **kwargs):
     _install_frontend(taiga_root=kwargs.get('TAIGA_ROOT'), **kwargs)
     _install_backend(taiga_root=kwargs.get('TAIGA_ROOT'), remote_user=kwargs.get('remote_user'),
@@ -101,9 +73,37 @@ def _install_backend(server_name, taiga_root=None, database=True, database_uri=N
                                                 server_name=server_name)
 
     conf_dir = '/'.join((remote_taiga_root, 'config'))
-    if not exists('/'.join((conf_dir, 'conf.json'))):
-        run('mkdir -p {conf_dir}'.format(conf_dir=conf_dir))
-        upload_template(taiga_dir('circus.ini'), conf_dir,
-                        context={'HOME': remote_taiga_root, 'USER': remote_user, 'VENV': virtual_env})
-
+    run('mkdir -p {conf_dir}'.format(conf_dir=conf_dir))
+    upload_template(taiga_dir('circus.ini'), '/etc/circus/conf.d/',
+                    context={'HOME': remote_taiga_root, 'USER': remote_user, 'VENV': virtual_env},
+                    use_sudo=True)
     upload_template(taiga_dir('circusd.conf'), '/etc/init/', context={'CONF_DIR': conf_dir}, use_sudo=True)
+
+
+def _install_events(taiga_root):
+    rabbitmq.install0()  # install_rabbitmq()
+    user = 'taiga'
+
+    if sudo('rabbitmqctl list_users | grep -q {user}'.format(user=user), warn_only=True).succeeded:
+        return
+
+    password = rabbitmq.create_user1(rmq_user=user, rmq_vhost=user)
+
+    rmq_uri = 'amqp://{user}:{password}@localhost:5672/{user}'.format(user=user, password=password)
+
+    append('{taiga_root}/taiga-back/settings/local.py'.format(taiga_root=taiga_root),
+           'EVENTS_PUSH_BACKEND = "taiga.events.backends.rabbitmq.EventsPushBackend"\n'
+           'EVENTS_PUSH_BACKEND_OPTIONS = {"url": "' + rmq_uri + '"}')
+    event_root = '{taiga_root}/taiga-events'.format(taiga_root=taiga_root)
+    clone_or_update(team='taigaio', repo='taiga-events', branch='master', to_dir=event_root)
+    with cd(event_root):
+        build_node_app(kwargs=dict(npm_global_packages=('coffeescript',), node_version='lts'),
+                       run_cmd=run)
+    upload_template(taiga_dir('config.json'), event_root, context={'RMQ_URI': rmq_uri})
+    user = run('echo $USER', quiet=True)
+    return install_upgrade_service(service_name='taiga_events',
+                                   context={
+                                       'User': user, 'Group': run('id -gn') or user,
+                                       'Environments': '', 'WorkingDirectory': event_root,
+                                       'ExecStart': "/bin/bash -c 'PATH=/home/{user}/n/bin:$PATH /home/{user}/n/bin/coffee index.coffee'".format(
+                                           user=user)})
