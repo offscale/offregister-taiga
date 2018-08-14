@@ -1,0 +1,7 @@
+{
+    "url": "%(RMQ_URI)s",
+    "secret": "mysecret",
+    "webSocketServer": {
+        "port": 8888
+    }
+}

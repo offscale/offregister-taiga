@@ -1,5 +1,8 @@
 from functools import partial
 from os import path
+
+from fabric.contrib.files import upload_template
+from offregister_fab_utils.ubuntu.systemd import restart_systemd
 from pkg_resources import resource_filename
 
 from fabric.api import run, cd, put, shell_env
@@ -10,7 +13,7 @@ from offregister_python.ubuntu import install_venv0
 taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
 
 
-def install_python_taiga_deps(cloned_xor_updated, remote_taiga_root=None):
+def install_python_taiga_deps(cloned_xor_updated, server_name):
     apt_depends('build-essential', 'binutils-doc', 'autoconf', 'flex', 'bison',
                 'libjpeg-dev', 'libfreetype6-dev', 'zlib1g-dev', 'libzmq3-dev',
                 'libgdbm-dev', 'libncurses5-dev', 'automake', 'libtool',
@@ -29,7 +32,8 @@ def install_python_taiga_deps(cloned_xor_updated, remote_taiga_root=None):
         run('pip3 install -r requirements.txt')
 
         if cloned_xor_updated == 'cloned':
-            put(taiga_dir('django.settings.py'), 'settings/local.py')
+            upload_template(taiga_dir('django.settings.py'), 'settings/local.py',
+                            context={'SERVER_NAME': server_name})
             run('python3 manage.py migrate --noinput')
             run('python3 manage.py compilemessages')
             run('python3 manage.py collectstatic --noinput')
@@ -41,4 +45,5 @@ def install_python_taiga_deps(cloned_xor_updated, remote_taiga_root=None):
             run('python3 manage.py migrate --noinput')
             run('python3 manage.py compilemessages')
             run('python3 manage.py collectstatic --noinput')
+            restart_systemd('circusd')
     return virtual_env
