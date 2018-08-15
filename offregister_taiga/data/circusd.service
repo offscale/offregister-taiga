@@ -1,0 +1,13 @@
+[Unit]
+Description=Circus process manager
+After=syslog.target network.target nss-lookup.target
+
+[Service]
+Type=simple
+ExecReload="%(CIRCUS_VENV)s/bin/circusctl" reload
+ExecStart="%(CIRCUS_VENV)s/bin/circusd" "%(CONF_DIR)s/circus.ini"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

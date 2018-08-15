@@ -31,9 +31,11 @@ def setup_taiga1(SERVER_NAME, *args, **kwargs):
     --link taiga-rabbit:rabbit \
     --link taiga-events:events \
     -e TAIGA_SSL=True \
+    -e TAIGA_HOSTNAME={SERVER_NAME} \
+    -e DB_PASS={password} \
+    -e TAIGA_DB_PASSWORD={password} \
     -v $(pwd)/ssl.crt:/etc/ssl/certs/nginx-selfsigned.crt:ro \
     -v $(pwd)/ssl.key:/etc/ssl/private/nginx-selfsigned.key:ro \
     -p 443:443 \
-    -e TAIGA_HOSTNAME={SERVER_NAME} \
     -v /media:/usr/src/taiga-back/media \
-    benhutchins/taiga'.format(SERVER_NAME=SERVER_NAME))
+    benhutchins/taiga'.format(SERVER_NAME=SERVER_NAME, password=password))
