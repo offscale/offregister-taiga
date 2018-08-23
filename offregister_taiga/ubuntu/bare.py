@@ -4,6 +4,7 @@ from json import dump, load
 from os import path
 
 from fabric.api import run
+from fabric.context_managers import shell_env, cd
 from fabric.contrib.files import append, exists
 from fabric.operations import sudo, put, get
 from nginx_parse_emit.utils import DollarTemplate
@@ -52,6 +53,7 @@ def reconfigure2(*args, **kwargs):
     taiga_root = kwargs.get('TAIGA_ROOT', run('printf $HOME', quiet=True))
 
     github = 'GITHUB' in kwargs and 'client_id' in kwargs['GITHUB']
+    virtual_env = '/opt/venvs/taiga'
 
     # Frontend
     front_config = '{taiga_root}/taiga-front/dist/js/conf.json'.format(taiga_root=taiga_root)
@@ -65,6 +67,16 @@ def reconfigure2(*args, **kwargs):
 
     if github:
         kwargs['TAIGA_FRONT_gitHubClientId'] = kwargs['GITHUB']['client_id']
+        apt_depends('subversion')
+
+        dist = '{taiga_root}/taiga-front/dist'.format(taiga_root=taiga_root)
+        if not exists('{dist}/plugins/github-auth'.format(dist=dist)):
+            with shell_env(VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)), cd(dist):
+                run('mkdir -p plugins')
+                run(
+                    '''svn export "https://github.com/taigaio/taiga-contrib-github-auth/tags/$(pip show taiga-contrib-github-auth | awk '/^Version: /{print $2}')/front/dist"  "github-auth"''')
+
+        conf['contribPlugins'].append('/plugins/github-auth/github-auth.json')
 
     conf.update({k[len('TAIGA_FRONT_'):]: v for k, v in kwargs.iteritems() if k.startswith('TAIGA_FRONT')})
 
@@ -78,6 +90,9 @@ def reconfigure2(*args, **kwargs):
         raise IOError('{} doesn\'t exist; did you install?'.format(back_config))
 
     if github:
+        with shell_env(VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)):
+            run('pip3 install taiga-contrib-github-auth')
+
         # TODO: Combine this into one `sed` command, chaining with `-e`
 
         run(DollarTemplate(
@@ -117,6 +132,11 @@ def reconfigure2(*args, **kwargs):
             '''sed -i -n -e '/^GITHUB_URL/!p' -e '$aGITHUB_URL = "$url"' $back_config''').safe_substitute(
             url=kwargs['GITHUB'].get('url', 'https://github.com/'),
             back_config=back_config))
+
+        install = 'INSTALLED_APPS += ["taiga_contrib_github_auth"]'
+        if run("grep -qF '{install}' {back_config}".format(install=install, back_config=back_config),
+               warn_only=True).failed:
+            append(back_config, install)
 
     '''
     sio = StringIO()
