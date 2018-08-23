@@ -5,7 +5,7 @@ from os import path
 
 import offregister_rabbitmq.ubuntu as rabbitmq
 from fabric.api import run, cd, put, shell_env
-from fabric.contrib.files import upload_template, exists, append
+from fabric.contrib.files import upload_template, exists
 from fabric.operations import sudo
 from offregister_app_push.ubuntu import build_node_app
 from offregister_fab_utils.apt import apt_depends
@@ -19,7 +19,7 @@ from pkg_resources import resource_filename
 taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
 
 
-def install_python_taiga_deps(cloned_xor_updated, server_name, virtual_env, sample_data=False):
+def install_python_taiga_deps(cloned_xor_updated, server_name, virtual_env, sample_data=False, skip_migrate=False):
     apt_depends('build-essential', 'binutils-doc', 'autoconf', 'flex', 'bison',
                 'libjpeg-dev', 'libfreetype6-dev', 'zlib1g-dev', 'libzmq3-dev',
                 'libgdbm-dev', 'libncurses5-dev', 'automake', 'libtool',
@@ -38,8 +38,8 @@ def install_python_taiga_deps(cloned_xor_updated, server_name, virtual_env, samp
         run('pip3 install -r requirements.txt')
 
         if cloned_xor_updated == 'cloned':
-            upload_template(taiga_dir('django.settings.py'), 'settings/local.py',
-                            context={'SERVER_NAME': server_name})
+            if skip_migrate:
+                return virtual_env
             run('python3 manage.py migrate --noinput')
             run('python3 manage.py compilemessages')
             run('python3 manage.py collectstatic --noinput')
@@ -48,6 +48,8 @@ def install_python_taiga_deps(cloned_xor_updated, server_name, virtual_env, samp
             if sample_data:
                 run('python3 manage.py sample_data')
             run('python3 manage.py rebuild_timeline --purge')
+        elif skip_migrate:
+            return virtual_env
         else:
             run('python3 manage.py migrate --noinput')
             run('python3 manage.py compilemessages')
@@ -79,7 +81,8 @@ def _install_frontend(taiga_root=None, **kwargs):
                     use_sudo=True)
 
 
-def _install_backend(server_name, taiga_root=None, database=True, database_uri=None, remote_user=None):
+def _install_backend(server_name, taiga_root=None, database=True,
+                     database_uri=None, remote_user=None, skip_migrate=False):
     apt_depends('git')  # 'circus'
     remote_taiga_root = taiga_root or run('printf $HOME', quiet=True)
     virtual_env = '/opt/venvs/taiga'
@@ -92,7 +95,7 @@ def _install_backend(server_name, taiga_root=None, database=True, database_uri=N
 
     with cd(remote_taiga_root):
         install_python_taiga_deps(clone_or_update(team='taigaio', repo='taiga-back'),
-                                  server_name=server_name, virtual_env=virtual_env)
+                                  server_name=server_name, virtual_env=virtual_env, skip_migrate=skip_migrate)
 
     # Circus
     circus_env = '/opt/venvs/circus'
@@ -128,9 +131,6 @@ def _install_events(taiga_root):
 
     rmq_uri = 'amqp://{user}:{password}@localhost:5672/{user}'.format(user=user, password=password)
 
-    append('{taiga_root}/taiga-back/settings/local.py'.format(taiga_root=taiga_root),
-           'EVENTS_PUSH_BACKEND = "taiga.events.backends.rabbitmq.EventsPushBackend"\n'
-           'EVENTS_PUSH_BACKEND_OPTIONS = {"url": "' + rmq_uri + '"}')
     event_root = '{taiga_root}/taiga-events'.format(taiga_root=taiga_root)
     clone_or_update(team='taigaio', repo='taiga-events', branch='master', to_dir=event_root)
     with cd(event_root):
@@ -143,7 +143,7 @@ def _install_events(taiga_root):
                                        'User': user, 'Group': run('id -gn') or user,
                                        'Environments': '', 'WorkingDirectory': event_root,
                                        'ExecStart': "/bin/bash -c 'PATH=/home/{user}/n/bin:$PATH /home/{user}/n/bin/coffee index.coffee'".format(
-                                           user=user)})
+                                           user=user)}), rmq_uri
 
 
 def _replace_configs(server_name, listen_port, taiga_root, email, public_register_enabled, force_clean=False):
@@ -154,10 +154,11 @@ def _replace_configs(server_name, listen_port, taiga_root, email, public_registe
     fqdn = '{protocol}://{server_name}'.format(protocol=protocol, server_name=server_name)
 
     # Frontend
-    js_conf_dir = '/'.join(('taiga-front', 'dist', 'js'))
+    js_conf_dir = '/'.join((taiga_root, 'taiga-front', 'dist', 'js'))
     conf_json_fname = '/'.join((js_conf_dir, 'conf.json'))
     if force_clean:
         run('rm -rfv {}'.format(conf_json_fname))
+    print 'looking for: {}'.format(conf_json_fname)
     if not exists(conf_json_fname):
         run('mkdir -p {conf_dir}'.format(conf_dir=js_conf_dir))
 
@@ -171,7 +172,7 @@ def _replace_configs(server_name, listen_port, taiga_root, email, public_registe
             apt_depends('jq')
             conf['eventsUrl'] = run('jq -r .url {event_config}'.format(event_config=event_config))
         sio = StringIO()
-        dump(conf, sio)
+        dump(conf, sio, indent=4, sort_keys=True)
         put(sio, conf_json_fname)
 
     # Backend
@@ -188,9 +189,6 @@ def _replace_configs(server_name, listen_port, taiga_root, email, public_registe
                                  })
 
     # Everything
-    run("find {taiga_root} -type f -exec sed -i 's|http://localhost:8000|{fqdn}|g' ".format(
-        taiga_root=remote_taiga_root, fqdn=fqdn
-    ) + "{} \;", shell_escape=False)
-    run("find {taiga_root} -type f -exec sed -i 's|localhost:8000|{server_name}|g' ".format(
-        taiga_root=remote_taiga_root, server_name=server_name
+    run("find {taiga_root} -type f -exec sed -i 's|http://localhost:8000|{fqdn}|g;s|localhost:8000|{server_name}|g'".format(
+        taiga_root=remote_taiga_root, fqdn=fqdn, server_name=server_name
     ) + "{} \;", shell_escape=False)
