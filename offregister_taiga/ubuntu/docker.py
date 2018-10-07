@@ -1,6 +1,6 @@
 from fabric.operations import run, sudo
 from offregister_docker import ubuntu as docker
-from offutils import generate_temp_password
+from offutils import generate_random_alphanum
 
 
 def install0(*args, **kwargs):
@@ -10,7 +10,7 @@ def install0(*args, **kwargs):
 
 
 def setup_taiga1(SERVER_NAME, *args, **kwargs):
-    password = kwargs.get('postgres_password', generate_temp_password(15))
+    password = kwargs.get('postgres_password', generate_random_alphanum(15))
     run("echo {password} > $(mktemp postgres_passwordXXX)".format(password=password))
 
     sudo('mkdir -p /usr/src/taiga-back/media')

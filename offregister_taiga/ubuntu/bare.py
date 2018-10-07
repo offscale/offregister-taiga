@@ -12,7 +12,7 @@ from offregister_fab_utils.apt import apt_depends
 from offregister_fab_utils.ubuntu.systemd import restart_systemd
 from pkg_resources import resource_filename
 
-from offregister_taiga.ubuntu.utils import _replace_configs, _install_frontend, _install_backend, _install_events
+from offregister_taiga.utils import _replace_configs, _install_frontend, _install_backend, _install_events
 
 taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
 
@@ -28,6 +28,7 @@ def install0(*args, **kwargs):
 
         apt_depends('nginx')
 
+    apt_depends('git')
     _install_frontend(taiga_root=kwargs.get('TAIGA_ROOT'), **kwargs)
     _install_backend(taiga_root=kwargs.get('TAIGA_ROOT'), remote_user=kwargs.get('remote_user'),
                      server_name=kwargs['SERVER_NAME'], skip_migrate=kwargs.get('skip_migrate', False))
@@ -93,43 +94,18 @@ def reconfigure2(*args, **kwargs):
         with shell_env(VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)):
             run('pip3 install taiga-contrib-github-auth')
 
-        # TODO: Combine this into one `sed` command, chaining with `-e`
-
         run(DollarTemplate(
-            '''sed -i -n -e '/^IMPORTERS\[\"github\"\]/!p' -e '$aIMPORTERS["github"] = { "active": True, "client_id": "$client_id","client_secret": "$client_secret"}' $back_config''').safe_substitute(
+            '''sed -i -n 
+            -e '/^IMPORTERS\[\"github\"\]/!p'
+            -e '$aIMPORTERS["github"] = { "active": True, "client_id": "$client_id","client_secret": "$client_secret"}'
+            -e '/^GITHUB_API_CLIENT_ID/!p'
+            -e '$aGITHUB_API_CLIENT_ID = "$client_id"'
+            -e '/^GITHUB_API_URL/!p' -e '$aGITHUB_API_URL = "$api_url"
+            -e '/^GITHUB_URL/!p' -e '$aGITHUB_URL = "$url"'
+             $back_config''').safe_substitute(
             client_id=kwargs['GITHUB']['client_id'],
             client_secret=kwargs['GITHUB']['client_secret'],
-            back_config=back_config))
-
-        run(DollarTemplate(
-            '''sed -i -n -e '/^IMPORTERS\[\"github\"\]/!p' -e '$aIMPORTERS["github"] = { "active": True, "client_id": "$client_id","client_secret": "$client_secret"}' $back_config''').safe_substitute(
-            client_id=kwargs['GITHUB']['client_id'],
-            client_secret=kwargs['GITHUB']['client_secret'],
-            back_config=back_config))
-
-        run(DollarTemplate(
-            '''sed -i -n -e '/^IMPORTERS\[\"github\"\]/!p' -e '$aIMPORTERS["github"] = { "active": True, "client_id": "$client_id","client_secret": "$client_secret"}' $back_config''').safe_substitute(
-            client_id=kwargs['GITHUB']['client_id'],
-            client_secret=kwargs['GITHUB']['client_secret'],
-            back_config=back_config))
-
-        run(DollarTemplate(
-            '''sed -i -n -e '/^GITHUB_API_CLIENT_SECRET/!p' -e '$aGITHUB_API_CLIENT_SECRET = "$client_secret"' $back_config''').safe_substitute(
-            client_secret=kwargs['GITHUB']['client_secret'],
-            back_config=back_config))
-
-        run(DollarTemplate(
-            '''sed -i -n -e '/^GITHUB_API_CLIENT_ID/!p' -e '$aGITHUB_API_CLIENT_ID = "$client_id"' $back_config''').safe_substitute(
-            client_id=kwargs['GITHUB']['client_id'],
-            back_config=back_config))
-
-        run(DollarTemplate(
-            '''sed -i -n -e '/^GITHUB_API_URL/!p' -e '$aGITHUB_API_URL = "$api_url"' $back_config''').safe_substitute(
             api_url=kwargs['GITHUB'].get('api_url', 'https://api.github.com/'),
-            back_config=back_config))
-
-        run(DollarTemplate(
-            '''sed -i -n -e '/^GITHUB_URL/!p' -e '$aGITHUB_URL = "$url"' $back_config''').safe_substitute(
             url=kwargs['GITHUB'].get('url', 'https://github.com/'),
             back_config=back_config))
 
