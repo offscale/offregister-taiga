@@ -1,4 +1,5 @@
 from fabric.operations import run, sudo
+
 from offregister_docker import ubuntu as docker
 from offutils import generate_random_alphanum
 

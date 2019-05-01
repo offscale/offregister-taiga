@@ -2,16 +2,16 @@ from cStringIO import StringIO
 from functools import partial
 from json import dump, load
 from os import path
+from pkg_resources import resource_filename
 
 from fabric.api import run
 from fabric.context_managers import shell_env, cd
 from fabric.contrib.files import append, exists
 from fabric.operations import sudo, put, get
+
 from nginx_parse_emit.utils import DollarTemplate
 from offregister_fab_utils.apt import apt_depends
 from offregister_fab_utils.ubuntu.systemd import restart_systemd
-from pkg_resources import resource_filename
-
 from offregister_taiga.utils import _replace_configs, _install_frontend, _install_backend, _install_events
 
 taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
@@ -30,8 +30,13 @@ def install0(*args, **kwargs):
 
     apt_depends('git')
     _install_frontend(taiga_root=kwargs.get('TAIGA_ROOT'), **kwargs)
-    _install_backend(taiga_root=kwargs.get('TAIGA_ROOT'), remote_user=kwargs.get('remote_user'),
-                     server_name=kwargs['SERVER_NAME'], skip_migrate=kwargs.get('skip_migrate', False))
+    _install_backend(taiga_root=kwargs.get('TAIGA_ROOT', '/var/www/taiga'),
+                     remote_user=kwargs.get('remote_user', 'taiga'  # ('taiga_user', gen_random_str(15), 'taiga')
+                                            ),
+                     circus_virtual_env=kwargs.get('CIRCUS_VIRTUALENV', '/opt/venvs/circus'),
+                     virtual_env=kwargs.get('TAIGA_VIRTUALENV', '/opt/venvs/taiga')
+                     # server_name=kwargs['SERVER_NAME'], skip_migrate=kwargs.get('skip_migrate', False)
+                     )
     _install_events(taiga_root=kwargs.get('TAIGA_ROOT'))
 
     _replace_configs(taiga_root=kwargs.get('TAIGA_ROOT'),
@@ -57,7 +62,7 @@ def reconfigure2(*args, **kwargs):
     virtual_env = '/opt/venvs/taiga'
 
     # Frontend
-    front_config = '{taiga_root}/taiga-front/dist/js/conf.json'.format(taiga_root=taiga_root)
+    front_config = '{taiga_root}/taiga-front-dist/dist/js/conf.json'.format(taiga_root=taiga_root)
     if not exists(front_config):
         raise IOError('{} doesn\'t exist; did you install?'.format(front_config))
 
@@ -70,7 +75,7 @@ def reconfigure2(*args, **kwargs):
         kwargs['TAIGA_FRONT_gitHubClientId'] = kwargs['GITHUB']['client_id']
         apt_depends('subversion')
 
-        dist = '{taiga_root}/taiga-front/dist'.format(taiga_root=taiga_root)
+        dist = '{taiga_root}/taiga-front-dist/dist'.format(taiga_root=taiga_root)
         if not exists('{dist}/plugins/github-auth'.format(dist=dist)):
             with shell_env(VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)), cd(dist):
                 run('mkdir -p plugins')
@@ -87,7 +92,9 @@ def reconfigure2(*args, **kwargs):
 
     # Backend
     back_config = '{taiga_root}/taiga-back/settings/local.py'.format(taiga_root=taiga_root)
-    if not exists(back_config):
+    stat = run("stat -c'%s' {}".format(back_config), warn_only=True)
+
+    if stat.failed or int(stat) == 0:
         raise IOError('{} doesn\'t exist; did you install?'.format(back_config))
 
     if github:

@@ -3,12 +3,14 @@ from functools import partial
 from json import dump, load, dumps
 from os import path
 from urlparse import urlparse
+from pkg_resources import resource_filename
 
-import offregister_rabbitmq.ubuntu as rabbitmq
 from fabric.api import run, cd, put, shell_env
 from fabric.context_managers import settings
 from fabric.contrib.files import upload_template, exists, append
 from fabric.operations import sudo
+
+import offregister_rabbitmq.ubuntu as rabbitmq
 from offregister_app_push.ubuntu import build_node_app
 from offregister_fab_utils import macos
 from offregister_fab_utils.apt import apt_depends
@@ -19,7 +21,6 @@ from offregister_postgres import ubuntu as postgres
 from offregister_postgres.utils import get_postgres_params
 from offregister_python.ubuntu import install_venv0
 from offutils import generate_random_alphanum
-from pkg_resources import resource_filename
 
 taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
 
@@ -34,7 +35,7 @@ def install_python_taiga_deps(virtual_env):
                     'libjpeg-dev', 'libfreetype6-dev', 'zlib1g-dev', 'libzmq3-dev',
                     'libgdbm-dev', 'libncurses5-dev', 'automake', 'libtool',
                     'libffi-dev', 'curl', 'git', 'tmux', 'gettext', 'libxml2-dev',
-                    'libxslt-dev', 'libssl-dev', 'libffi-dev')
+                    'libxslt1-dev', 'libssl-dev', 'libffi-dev', 'libffi6')
     elif uname.startswith('Darwin'):
         run('brew install libxml2 libxslt')
     else:
@@ -44,7 +45,7 @@ def install_python_taiga_deps(virtual_env):
     group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
     sudo('chown -R {group_user} {virtual_env}'.format(group_user=group_user, virtual_env=virtual_env))
 
-    pip_version = '9.0.3'
+    pip_version = '19.1'
 
     if is_ubuntu:
         install_venv0(python3=True, virtual_env=virtual_env, pip_version=pip_version)
@@ -54,12 +55,15 @@ def install_python_taiga_deps(virtual_env):
 
     with shell_env(VIRTUAL_ENV=virtual_env, PATH='{}/bin:$PATH'.format(virtual_env)), cd('taiga-back'):
         # run("sed -i '0,/lxml==3.5.0b1/s//lxml==3.5.0/' requirements.txt")
-        run('pip3 install pip=={pip_version}'.format(pip_version=pip_version))
+        run('pip3 install -U pip')
         run('pip3 --version; python3 --version')
 
         if not is_ubuntu:
             run('STATIC_DEPS=true pip3 install lxml')
 
+        run('pip3 install -U setuptools')
+        run('pip3 install --no-cache-dir cffi')
+        run('pip3 install --no-cache-dir cairocffi')
         run('pip3 install -r requirements.txt')
     return virtual_env
 
@@ -89,10 +93,13 @@ def _migrate(virtual_env, taiga_root, skip_migrate, sample_data, remote_user, da
 
             postgres = partial(sudo, user='postgres', shell_escape=False)
 
-            if postgres('''[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga'''.format(database_uri=database_uri),
-                        warn_only=True).failed:
+            if postgres(
+                '''[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga'''.format(
+                    database_uri=database_uri),
+                warn_only=True).failed:
                 with settings(prompts={'Password: ': parsed_connection_str.password}):
-                    postgres('[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}'.format(params=params, dbname='taiga'))
+                    postgres('[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}'.format(
+                        params=params, dbname='taiga'))
             # ENDTODO
 
             DATABASES['default']['NAME'] = 'taiga'
@@ -104,23 +111,16 @@ def _migrate(virtual_env, taiga_root, skip_migrate, sample_data, remote_user, da
             # TODO: Use my Django settings.py parser/emitter
             append('settings/local.py', 'DATABASES = {}'.format(dumps(DATABASES, sort_keys=True)))
 
-        if sudo(
-            '''psql -t -c '\dt' "{database_uri}" | grep -qF django_migrations'''.format(
-                database_uri=database_uri), user=remote_user, warn_only=True).failed:
-            if skip_migrate:
-                return virtual_env
-            run('python3 manage.py migrate --noinput')
-            run('python3 manage.py compilemessages')
-            run('python3 manage.py collectstatic --noinput')
-            run('python3 manage.py loaddata initial_user')
-            run('python3 manage.py loaddata initial_project_templates')
-            if sample_data:
-                run('python3 manage.py sample_data')
-            run('python3 manage.py rebuild_timeline --purge')
-        else:
-            run('python3 manage.py migrate --noinput')
-            run('python3 manage.py compilemessages')
-            run('python3 manage.py collectstatic --noinput')
+        run('python3 manage.py migrate --noinput')
+        run('python3 manage.py compilemessages')
+        run('python3 manage.py collectstatic --noinput')
+
+        run('python3 manage.py loaddata initial_user')
+        run('python3 manage.py loaddata initial_project_templates')
+
+        if sample_data:
+            run('python3 manage.py sample_data')
+        run('python3 manage.py rebuild_timeline --purge')
 
     return virtual_env
 
@@ -137,13 +137,14 @@ def _install_frontend(taiga_root=None, **kwargs):
             clone_or_update(team='taigaio', repo='taiga-front-dist')
             run('ln -s {root}/taiga-front-dist/dist {root}/taiga-front/dist'.format(root=taiga_root))
 
-    sudo('mkdir -p /etc/nginx/sites-enabled')
+    if not kwargs.get('skip_nginx'):
+        sudo('mkdir -p /etc/nginx/sites-enabled')
 
-    upload_template(taiga_dir('taiga.nginx.conf'), '/etc/nginx/sites-enabled/taiga.conf',
-                    context={'TAIGA_ROOT': taiga_root,
-                             'LISTEN_PORT': kwargs['LISTEN_PORT'],
-                             'SERVER_NAME': kwargs['SERVER_NAME']},
-                    use_sudo=True)
+        upload_template(taiga_dir('taiga.nginx.conf'), '/etc/nginx/sites-enabled/taiga.conf',
+                        context={'TAIGA_ROOT': taiga_root,
+                                 'LISTEN_PORT': kwargs['LISTEN_PORT'],
+                                 'SERVER_NAME': kwargs['SERVER_NAME']},
+                        use_sudo=True)
 
 
 def _install_backend(taiga_root, remote_user, circus_virtual_env,
@@ -153,9 +154,9 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
     is_ubuntu = 'Ubuntu' in uname
     home = run('echo $HOME')
 
-    print 'postgres.setup_users'
-    postgres.setup_users(connection_str=database_uri, dbs=('taiga', remote_user), users=(remote_user,))
-    print '/postgres.setup_users'
+    # /print 'postgres.setup_users'
+    # postgres.setup_users(connection_str=database_uri, dbs=('taiga', remote_user), users=(remote_user,))
+    # /print '/postgres.setup_users'
 
     if database:
         if is_ubuntu:
@@ -293,7 +294,10 @@ def _replace_configs(server_name, listen_port, taiga_root, email, public_registe
     local_py = '{taiga_root}/taiga-back/settings/local.py'.format(taiga_root=taiga_root)
     if force_clean:
         run('rm -rfv {}'.format(local_py))
-    if not exists(local_py):
+
+    stat = run("stat -c'%s' {}".format(local_py), warn_only=True)
+
+    if stat.failed or int(stat) == 0:
         upload_template(taiga_dir('local.py'), local_py,
                         context={'FQDN': fqdn, 'PROTOCOL': protocol,
                                  'SERVER_NAME': server_name,
@@ -302,24 +306,32 @@ def _replace_configs(server_name, listen_port, taiga_root, email, public_registe
                                  'PUBLIC_REGISTER_ENABLED': public_register_enabled
                                  })
 
-    cmd = "sed -i -n -e 's|http://localhost:8000|{fqdn}|g' -e 's|localhost:8000|{server_name}|g'".format(
-        fqdn=fqdn, server_name=server_name
-    )
+    stat = run("stat -c'%s' {}".format(local_py), warn_only=True)
+    if stat.failed or int(stat) == 0:
+        raise IOError('{} doesn\'t exist; did you install?'.format(local_py))
+
+    cmd = "sed -i -e 's|http://localhost:8000|{fqdn}|g' " \
+          "-e 's|localhost:8000|{server_name}|g' " \
+          "-e 's|http|{protocol}|g' " \
+          "-e 's|httphttp|http|g' " \
+          "-e 's|https\\+|https|g' ".format(fqdn=fqdn, server_name=server_name, protocol=protocol)
 
     # Back
-    run('for f in {taiga_root}/taiga-back/settings/*.py; do {cmd} "$f"; done'.format(cmd=cmd, taiga_root=taiga_root),
+    run('for f in {taiga_root}/taiga-back/settings/*; do {cmd} "$f"; done'.format(cmd=cmd, taiga_root=taiga_root),
         shell_escape=False, shell=False)
 
     # Front
     run('{cmd} {taiga_root}/taiga-front/app-loader/app-loader.coffee'.format(cmd=cmd, taiga_root=taiga_root))
-    run('for f in {taiga_root}/taiga-front/conf/*.json; do {cmd} "$f"; done'.format(cmd=cmd, taiga_root=taiga_root),
-        shell_escape=False, shell=False)
+
+    # Front (dist)
+    run('for f in {taiga_root}/taiga-front-dist/dist/*.json; do {cmd} "$f"; done'.format(
+        cmd=cmd, taiga_root=taiga_root), shell_escape=False, shell=False)
 
     # Everything
     '''
     run('find {taiga_root} -type f -name .git -prune -o {extra} -exec {cmd} {end}'.format(
         taiga_root=taiga_root,
-        extra='-exec grep -Iq . {} \; -and -print',
+        extra='-exec grep -Iq . {} \\; -and -print',
         cmd=cmd,
         end='{} \;'
     ), shell_escape=False)
