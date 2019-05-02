@@ -30,13 +30,14 @@ def install0(*args, **kwargs):
 
     apt_depends('git')
     _install_frontend(taiga_root=kwargs.get('TAIGA_ROOT'), **kwargs)
-    _install_backend(taiga_root=kwargs.get('TAIGA_ROOT', '/var/www/taiga'),
-                     remote_user=kwargs.get('remote_user', 'taiga'  # ('taiga_user', gen_random_str(15), 'taiga')
-                                            ),
-                     circus_virtual_env=kwargs.get('CIRCUS_VIRTUALENV', '/opt/venvs/circus'),
-                     virtual_env=kwargs.get('TAIGA_VIRTUALENV', '/opt/venvs/taiga')
-                     # server_name=kwargs['SERVER_NAME'], skip_migrate=kwargs.get('skip_migrate', False)
-                     )
+    _, database_uri = _install_backend(
+        taiga_root=kwargs.get('TAIGA_ROOT', '/var/www/taiga'),
+        remote_user=kwargs.get('remote_user', 'taiga'  # ('taiga_user', gen_random_str(15), 'taiga')
+                               ),
+        circus_virtual_env=kwargs.get('CIRCUS_VIRTUALENV', '/opt/venvs/circus'),
+        virtual_env=kwargs.get('TAIGA_VIRTUALENV', '/opt/venvs/taiga')
+        # server_name=kwargs['SERVER_NAME'], skip_migrate=kwargs.get('skip_migrate', False)
+    )
     _install_events(taiga_root=kwargs.get('TAIGA_ROOT'))
 
     _replace_configs(taiga_root=kwargs.get('TAIGA_ROOT'),
@@ -44,6 +45,7 @@ def install0(*args, **kwargs):
                      listen_port=kwargs['LISTEN_PORT'],
                      email=kwargs.get('EMAIL'),
                      public_register_enabled=kwargs.get('public_register_enabled', True),
+                     database_uri=database_uri,
                      force_clean=False)
 
     return 'installed taiga'

@@ -158,15 +158,24 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
     # postgres.setup_users(connection_str=database_uri, dbs=('taiga', remote_user), users=(remote_user,))
     # /print '/postgres.setup_users'
 
+    print '_install_backend'
+
     if database:
         if is_ubuntu:
             postgres.install0()
-        postgres.setup_users(dbs=('taiga', remote_user), users=(remote_user,))
+
+        user = {'user': 'taiga_user', 'password': generate_random_alphanum(16), 'dbname': 'taiga_db'}
+        database_uri = 'postgres://{user}:{password}@localhost/{dbname}'.format(**user)
+
+        created = postgres.setup_users(
+            create=(user,)
+        )
+        assert created is not None
     elif not database_uri:
         raise ValueError('Must create database or provide database_uri')
 
     with cd(taiga_root):
-        clone_or_update(team='SamuelMarks', repo='taiga-back')
+        clone_or_update(team='taigaio', repo='taiga-back')
         install_python_taiga_deps(virtual_env)
 
     # Circus
@@ -208,7 +217,7 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
     else:
         upload_template(taiga_dir('circusd.conf'), '/etc/init/', context=circusd_context, use_sudo=True)
 
-    return circus_virtual_env
+    return circus_virtual_env, database_uri
 
 
 def _install_events(taiga_root):
@@ -262,7 +271,8 @@ def _install_events(taiga_root):
     raise NotImplementedError(uname)
 
 
-def _replace_configs(server_name, listen_port, taiga_root, email, public_register_enabled, force_clean=False):
+def _replace_configs(server_name, listen_port, taiga_root, email,
+                     public_register_enabled, database_uri, force_clean=False):
     protocol = 'https' if listen_port == 443 else 'http'
 
     fqdn = '{protocol}://{server_name}'.format(protocol=protocol, server_name=server_name)
@@ -272,7 +282,6 @@ def _replace_configs(server_name, listen_port, taiga_root, email, public_registe
     conf_json_fname = '/'.join((js_conf_dir, 'conf.json'))
     if force_clean:
         run('rm -rfv {}'.format(conf_json_fname))
-    print 'looking for: {}'.format(conf_json_fname)
     if not exists(conf_json_fname):
         run('mkdir -p {conf_dir}'.format(conf_dir=js_conf_dir))
 
@@ -298,13 +307,52 @@ def _replace_configs(server_name, listen_port, taiga_root, email, public_registe
     stat = run("stat -c'%s' {}".format(local_py), warn_only=True)
 
     if stat.failed or int(stat) == 0:
-        upload_template(taiga_dir('local.py'), local_py,
-                        context={'FQDN': fqdn, 'PROTOCOL': protocol,
-                                 'SERVER_NAME': server_name,
-                                 'SECRET_KEY': generate_random_alphanum(52),
-                                 'DEFAULT_FROM_EMAIL': email or 'no-reply@example.com',
-                                 'PUBLIC_REGISTER_ENABLED': public_register_enabled
-                                 })
+        context = {'FQDN': fqdn, 'PROTOCOL': protocol,
+                   'SERVER_NAME': server_name,
+                   'SECRET_KEY': generate_random_alphanum(52),
+                   'DEFAULT_FROM_EMAIL': email or 'no-reply@example.com',
+                   'PUBLIC_REGISTER_ENABLED': public_register_enabled
+                   }
+        mq = run('jq -r .url {taiga_root}/taiga-events/config.json'.format(taiga_root=taiga_root), warn_only=True)
+
+        if not mq.failed and mq:
+            context.update({
+                'EVENTS_PUSH_BACKEND': 'taiga.events.backends.rabbitmq.EventsPushBackend',
+                'EVENTS_PUSH_BACKEND_OPTIONS': {'url': mq}
+            })
+
+        if database_uri:
+            _databases = frozenset(('django.db.backends.postgresql'
+                                    'django.db.backends.mysql'
+                                    'django.db.backends.sqlite3'
+                                    'django.db.backends.oracle'))
+
+            parsed_connection_str = urlparse(database_uri)
+            params = get_postgres_params(parsed_connection_str)
+
+            postgres = partial(sudo, user='postgres', shell_escape=False)
+
+            if postgres(
+                '''[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga'''.format(
+                    database_uri=database_uri),
+                warn_only=True).failed:
+                with settings(prompts={'Password: ': parsed_connection_str.password}):
+                    postgres('[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}'.format(
+                        params=params, dbname='taiga'))
+            # ENDTODO
+
+            context['DATABASES'] = {
+                'default': {
+                    'ENGINE': 'django.db.backends.postgresql',
+                    'NAME': parsed_connection_str.path and parsed_connection_str.path[1:] or 'taiga',
+                    'USER': parsed_connection_str.username,
+                    'PASSWORD': parsed_connection_str.password,
+                    'HOST': parsed_connection_str.hostname,
+                    'PORT': parsed_connection_str.port or 5432,
+                }
+            }
+
+        upload_template(taiga_dir('local.py'), local_py, context=context)
 
     stat = run("stat -c'%s' {}".format(local_py), warn_only=True)
     if stat.failed or int(stat) == 0:
