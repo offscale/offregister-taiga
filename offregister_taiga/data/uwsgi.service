@@ -1,0 +1,13 @@
+[Unit]
+Description=UWSGI
+After=syslog.target network.target nss-lookup.target
+
+[Service]
+Type=simple
+WorkingDirectory=%(TAIGA_BACK)s
+ExecStart="$(VENV)s/uwsgi" --http :%(PORT)d --module taiga.wsgi
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

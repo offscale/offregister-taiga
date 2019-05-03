@@ -3,6 +3,8 @@ from functools import partial
 from json import dump, load, dumps
 from os import path
 from urlparse import urlparse
+
+from offregister_fab_utils.ubuntu.systemd import restart_systemd
 from pkg_resources import resource_filename
 
 from fabric.api import run, cd, put, shell_env
@@ -154,12 +156,6 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
     is_ubuntu = 'Ubuntu' in uname
     home = run('echo $HOME')
 
-    # /print 'postgres.setup_users'
-    # postgres.setup_users(connection_str=database_uri, dbs=('taiga', remote_user), users=(remote_user,))
-    # /print '/postgres.setup_users'
-
-    print '_install_backend'
-
     if database:
         if is_ubuntu:
             postgres.install0()
@@ -178,14 +174,30 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
         clone_or_update(team='taigaio', repo='taiga-back')
         install_python_taiga_deps(virtual_env)
 
-    # Circus
+    # UWSGI
+    with shell_env(VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)):
+        run('pip3 install uwsgi')
+
+    if not exists('/etc/systemd/system'):
+        raise NotImplementedError('Non SystemD platforms')
+
+    upload_template(taiga_dir('uwsgi.service'), '/etc/systemd/system/',
+                    context={'TAIGA_BACK': '{}/taiga-back'.format(taiga_root),
+                             'VENV': virtual_env, 'PORT': 8001},
+                    use_sudo=True)
+    restart_systemd('uwsgi')
+
+    return virtual_env, database_uri
+
+    # return _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user, taiga_root, uname)
+
+
+def _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user, taiga_root, uname):
     sudo('mkdir -p {circus_virtual_env}'.format(circus_virtual_env=circus_virtual_env))
     group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
     sudo('chown -R {group_user} {circus_virtual_env}'.format(group_user=group_user,
                                                              circus_virtual_env=circus_virtual_env))
-
     print 'before install_venv0', circus_virtual_env
-
     if is_ubuntu:
         install_venv0(python3=False, virtual_env=circus_virtual_env)
     else:
@@ -195,14 +207,10 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
         run('virtualenv "{virtual_env}"'.format(virtual_env=circus_virtual_env))
     with shell_env(VIRTUAL_ENV=circus_virtual_env, PATH="{}/bin:$PATH".format(circus_virtual_env)):
         run('pip2 install circus')
-
     print 'after install_venv0', circus_virtual_env
-
     conf_dir = '/etc/circus/conf.d'  # '/'.join((taiga_root, 'config'))
     sudo('mkdir -p {conf_dir}'.format(conf_dir=conf_dir))
-
     py_ver = run('{virtual_env}/bin/python --version'.format(virtual_env=circus_virtual_env)).partition(' ')[2][:3]
-
     upload_template(taiga_dir('circus.ini'), '{conf_dir}/'.format(conf_dir=conf_dir),
                     context={'HOME': taiga_root, 'USER': remote_user,
                              'VENV': circus_virtual_env, 'PYTHON_VERSION': py_ver},
@@ -216,7 +224,6 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
         upload_template(taiga_dir('circusd.service'), '/etc/systemd/system/', context=circusd_context, use_sudo=True)
     else:
         upload_template(taiga_dir('circusd.conf'), '/etc/init/', context=circusd_context, use_sudo=True)
-
     return circus_virtual_env, database_uri
 
 

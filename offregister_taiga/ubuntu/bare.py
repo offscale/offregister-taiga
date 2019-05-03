@@ -53,7 +53,8 @@ def install0(*args, **kwargs):
 
 def serve1(*args, **kwargs):
     restart_systemd('nginx')
-    restart_systemd('circusd')
+    # restart_systemd('circusd')
+    restart_systemd('uwsgi')
     return 'served taiga'
 
 
