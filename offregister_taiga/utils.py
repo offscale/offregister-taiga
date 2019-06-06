@@ -181,7 +181,7 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
     if not exists('/etc/systemd/system'):
         raise NotImplementedError('Non SystemD platforms')
 
-    upload_template(taiga_dir('uwsgi.service'), '/etc/systemd/system/',
+    upload_template(taiga_dir('uwsgi.service'), '/etc/systemd/system/taiga-uwsgi.service',
                     context={'TAIGA_BACK': '{}/taiga-back'.format(taiga_root),
                              'VENV': virtual_env, 'PORT': 8001},
                     use_sudo=True)
