@@ -153,7 +153,7 @@ def reconfigure2(*args, **kwargs):
     '''
 
     if not exists('/etc/systemd/system/circusd.service'):
-        circus_virtual_env = '/opt/venvs/circus'
+        circus_virtual_env = kwargs.get('CIRCUS_VIRTUALENV', '/opt/venvs/circus')
         with shell_env(VIRTUAL_ENV=virtual_env, PATH='{}/bin:$PATH'.format(virtual_env)):
             if run('''python -c 'import pkgutil; exit(0 if pkgutil.find_loader("django_settings_cli") else 2)' ''',
                    warn_only=True, quiet=True).failed:
@@ -166,6 +166,7 @@ def reconfigure2(*args, **kwargs):
             )
         _setup_circus(home=run('echo $HOME', quiet=True),
                       circus_virtual_env=circus_virtual_env,
+                      taiga_virtual_env=kwargs.get('TAIGA_VIRTUALENV', '/opt/venvs/taiga'),
                       remote_user=kwargs['remote_user'],
                       database_uri=database_uri,
                       taiga_root=taiga_root,

@@ -159,7 +159,8 @@ def _install_frontend(taiga_root=None, **kwargs):
     if not kwargs.get('skip_nginx'):
         sudo('mkdir -p /etc/nginx/sites-enabled')
 
-        upload_template(taiga_dir('taiga.nginx.conf'), '/etc/nginx/sites-enabled/taiga.conf',
+        upload_template(taiga_dir('taiga.nginx.conf'),
+                        '/etc/nginx/sites-enabled/{server_name}.conf'.format(server_name=kwargs['SERVER_NAME']),
                         context={'TAIGA_ROOT': taiga_root,
                                  'LISTEN_PORT': kwargs['LISTEN_PORT'],
                                  'SERVER_NAME': kwargs['SERVER_NAME']},
@@ -202,17 +203,20 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
         sudo('adduser {remote_user} --disabled-password --quiet --gecos ""'.format(remote_user=remote_user))
     (uid, user), (gid, group) = get_user_group_tuples(remote_user)
 
-    upload_template(taiga_dir('uwsgi.service'), '/etc/systemd/system/taiga-uwsgi.service',
-                    context={
-                        'USER': user,
-                        'GROUP': group,
-                        'PORT': 8001,
-                        'TAIGA_BACK': '{}/taiga-back'.format(taiga_root),
-                        'UID': uid,
-                        'GID': gid,
-                        'VENV': virtual_env
-                    },
-                    use_sudo=True)
+    upload_template(
+        taiga_dir('uwsgi.service'),
+        '/etc/systemd/system/taiga-uwsgi.service',
+        context={
+            'USER': user,
+            'GROUP': group,
+            'PORT': 8001,
+            'TAIGA_BACK': '{}/taiga-back'.format(taiga_root),
+            'UID': uid,
+            'GID': gid,
+            'VENV': virtual_env
+        },
+        use_sudo=True
+    )
     restart_systemd('taiga-uwsgi')
 
     return virtual_env, database_uri
@@ -220,12 +224,11 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
     # return _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user, taiga_root, uname)
 
 
-def _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user, taiga_root, uname):
+def _setup_circus(circus_virtual_env, taiga_virtual_env, database_uri, home, is_ubuntu, remote_user, taiga_root, uname):
     sudo('mkdir -p {circus_virtual_env}'.format(circus_virtual_env=circus_virtual_env))
     group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
     sudo('chown -R {group_user} {circus_virtual_env}'.format(group_user=group_user,
                                                              circus_virtual_env=circus_virtual_env))
-    print('before install_venv0', circus_virtual_env)
     if is_ubuntu:
         install_venv0(python3=False, virtual_env=circus_virtual_env)
     else:
@@ -235,13 +238,12 @@ def _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user
         run('virtualenv "{virtual_env}"'.format(virtual_env=circus_virtual_env))
     with shell_env(VIRTUAL_ENV=circus_virtual_env, PATH="{}/bin:$PATH".format(circus_virtual_env)):
         run('pip2 install circus')
-    print('after install_venv0', circus_virtual_env)
     conf_dir = '/etc/circus/conf.d'  # '/'.join((taiga_root, 'config'))
     sudo('mkdir -p {conf_dir}'.format(conf_dir=conf_dir))
     py_ver = run('{virtual_env}/bin/python --version'.format(virtual_env=circus_virtual_env)).partition(' ')[2][:3]
     upload_template(taiga_dir('circus.ini'), '{conf_dir}/'.format(conf_dir=conf_dir),
                     context={'HOME': taiga_root, 'USER': remote_user,
-                             'VENV': circus_virtual_env, 'PYTHON_VERSION': py_ver},
+                             'VENV': taiga_virtual_env, 'PYTHON_VERSION': py_ver},
                     use_sudo=True)
     circusd_context = {'CONF_DIR': conf_dir, 'CIRCUS_VENV': circus_virtual_env}
     if uname.startswith('Darwin'):
