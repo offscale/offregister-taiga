@@ -155,6 +155,9 @@ def _install_frontend(taiga_root=None, **kwargs):
         if not exists('taiga-front/dist'):
             clone_or_update(team='taigaio', repo='taiga-front-dist')
             run('ln -s {root}/taiga-front-dist/dist {root}/taiga-front/dist'.format(root=taiga_root))
+            run('ln -s {root}/taiga-front-dist/dist/conf.example.json {root}/taiga-front/dist/conf.json'.format(
+                root=taiga_root
+            ))
 
     if not kwargs.get('skip_nginx'):
         sudo('mkdir -p /etc/nginx/sites-enabled')
@@ -230,20 +233,19 @@ def _setup_circus(circus_virtual_env, taiga_virtual_env, database_uri, home, is_
     sudo('chown -R {group_user} {circus_virtual_env}'.format(group_user=group_user,
                                                              circus_virtual_env=circus_virtual_env))
     if is_ubuntu:
-        install_venv0(python3=False, virtual_env=circus_virtual_env)
+        install_venv0(python3=True, virtual_env=circus_virtual_env)
     else:
-        if not cmd_avail('virtualenv'):
-            run('pip install virtualenv')
-
-        run('virtualenv "{virtual_env}"'.format(virtual_env=circus_virtual_env))
+        run('python3 -m venv "{virtual_env}"'.format(virtual_env=circus_virtual_env))
     with shell_env(VIRTUAL_ENV=circus_virtual_env, PATH="{}/bin:$PATH".format(circus_virtual_env)):
-        run('pip2 install circus')
+        run('pip install circus')
     conf_dir = '/etc/circus/conf.d'  # '/'.join((taiga_root, 'config'))
     sudo('mkdir -p {conf_dir}'.format(conf_dir=conf_dir))
-    py_ver = run('{virtual_env}/bin/python --version'.format(virtual_env=circus_virtual_env)).partition(' ')[2][:3]
+    py_ver = run('{virtual_env}/bin/python --version'.format(virtual_env=taiga_virtual_env)).partition(' ')[2][:3]
     upload_template(taiga_dir('circus.ini'), '{conf_dir}/'.format(conf_dir=conf_dir),
-                    context={'HOME': taiga_root, 'USER': remote_user,
-                             'VENV': taiga_virtual_env, 'PYTHON_VERSION': py_ver},
+                    context={'HOME': taiga_root,
+                             'USER': remote_user,
+                             'VENV': taiga_virtual_env,
+                             'PYTHON_VERSION': py_ver},
                     use_sudo=True)
     circusd_context = {'CONF_DIR': conf_dir, 'CIRCUS_VENV': circus_virtual_env}
     if uname.startswith('Darwin'):
