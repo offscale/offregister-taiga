@@ -1,18 +1,30 @@
-from cStringIO import StringIO
+from platform import python_version_tuple
+
+from six import iteritems
+
+if python_version_tuple()[0] == '2':
+    try:
+        from cStringIO import StringIO
+    except ImportError:
+        from StringIO import StringIO
+else:
+    from io import StringIO
+
 from functools import partial
 from json import dump, load
 from os import path
-from pkg_resources import resource_filename
 
 from fabric.api import run
 from fabric.context_managers import shell_env, cd
 from fabric.contrib.files import append, exists
 from fabric.operations import sudo, put, get
-
 from nginx_parse_emit.utils import DollarTemplate
 from offregister_fab_utils.apt import apt_depends
 from offregister_fab_utils.ubuntu.systemd import restart_systemd
-from offregister_taiga.utils import _replace_configs, _install_frontend, _install_backend, _install_events
+from pkg_resources import resource_filename
+
+from offregister_taiga.utils import (_replace_configs, _install_frontend, _install_backend,
+                                     _install_events, _setup_circus)
 
 taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
 
@@ -20,7 +32,7 @@ taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga
 def install0(*args, **kwargs):
     if run('dpkg -s {package}'.format(package='nginx'), quiet=True, warn_only=True).failed:
         apt_depends('curl')
-        sudo('curl https://nginx.org/keys/nginx_signing.key | sudo apt-key add -')
+        sudo('curl https://nginx.org/keys/nginx_signing.key | apt-key add -')
         codename = run('lsb_release -cs')
         append('/etc/apt/sources.list',
                'deb http://nginx.org/packages/ubuntu/ {codename} nginx'.format(codename=codename),
@@ -54,12 +66,15 @@ def install0(*args, **kwargs):
 def serve1(*args, **kwargs):
     restart_systemd('nginx')
     # restart_systemd('circusd')
-    restart_systemd('uwsgi')
+    restart_systemd('taiga-uwsgi')
     return 'served taiga'
 
 
 def reconfigure2(*args, **kwargs):
+    kwargs.setdefault('remote_user', 'ubuntu')
     taiga_root = kwargs.get('TAIGA_ROOT', run('printf $HOME', quiet=True))
+    uname = run('uname -v')
+    is_ubuntu = 'Ubuntu' in uname
 
     github = 'GITHUB' in kwargs and 'client_id' in kwargs['GITHUB']
     virtual_env = '/opt/venvs/taiga'
@@ -87,7 +102,7 @@ def reconfigure2(*args, **kwargs):
 
         conf['contribPlugins'].append('/plugins/github-auth/github-auth.json')
 
-    conf.update({k[len('TAIGA_FRONT_'):]: v for k, v in kwargs.iteritems() if k.startswith('TAIGA_FRONT')})
+    conf.update({k[len('TAIGA_FRONT_'):]: v for k, v in iteritems(kwargs) if k.startswith('TAIGA_FRONT')})
 
     sio = StringIO()
     dump(conf, sio, indent=4, sort_keys=True)
@@ -137,4 +152,23 @@ def reconfigure2(*args, **kwargs):
     put(sio, back_config)
     '''
 
-    return restart_systemd('circusd')
+    if not exists('/etc/systemd/system/circusd.service'):
+        circus_virtual_env = '/opt/venvs/circus'
+        with shell_env(VIRTUAL_ENV=virtual_env, PATH='{}/bin:$PATH'.format(virtual_env)):
+            if run('''python -c 'import pkgutil; exit(0 if pkgutil.find_loader("django_settings_cli") else 2)' ''',
+                   warn_only=True, quiet=True).failed:
+                run('pip install'
+                    ' https://api.github.com/repos/offscale/django-settings-cli/zipball#egg=django_settings_cli')
+            database_uri = 'python -m django_settings_cli parse .DATABASES.default {}{}'.format(
+                taiga_root,
+                '''taiga-back/settings/local.py -f
+                 '{ENGINE[ENGINE.rfind(".")+1:]}://{USER}@{HOST or "localhost"}:{PORT or 5432}/{NAME}' -r'''
+            )
+        _setup_circus(home=run('echo $HOME', quiet=True),
+                      circus_virtual_env=circus_virtual_env,
+                      remote_user=kwargs['remote_user'],
+                      database_uri=database_uri,
+                      taiga_root=taiga_root,
+                      is_ubuntu=is_ubuntu,
+                      uname=uname)
+        return restart_systemd('circusd')

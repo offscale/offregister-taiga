@@ -5,7 +5,9 @@ After=syslog.target network.target nss-lookup.target
 [Service]
 Type=simple
 WorkingDirectory=%(TAIGA_BACK)s
-ExecStart="$(VENV)s/uwsgi" --http :%(PORT)d --module taiga.wsgi
+ExecStart='%(VENV)s/bin/uwsgi' --uid '%(UID)d' --gid '%(GID)d' --http ':%(PORT)d' --module 'taiga.wsgi'
+User=%(USER)s
+Group=%(GROUP)s
 Restart=always
 RestartSec=5
 

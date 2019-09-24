@@ -1,8 +1,22 @@
-from cStringIO import StringIO
+from __future__ import print_function
+
+from platform import python_version_tuple
+
+from offregister_fab_utils.misc import get_user_group_tuples
+
+if python_version_tuple()[0] == '2':
+    try:
+        from cStringIO import StringIO
+    except ImportError:
+        from StringIO import StringIO
+    from urlparse import urlparse
+else:
+    from io import StringIO
+    from urllib import parse as urlparse
+
 from functools import partial
 from json import dump, load, dumps
 from os import path
-from urlparse import urlparse
 
 from offregister_fab_utils.ubuntu.systemd import restart_systemd
 from pkg_resources import resource_filename
@@ -10,7 +24,7 @@ from pkg_resources import resource_filename
 from fabric.api import run, cd, put, shell_env
 from fabric.context_managers import settings
 from fabric.contrib.files import upload_template, exists, append
-from fabric.operations import sudo
+from fabric.operations import sudo, prompt
 
 import offregister_rabbitmq.ubuntu as rabbitmq
 from offregister_app_push.ubuntu import build_node_app
@@ -47,7 +61,7 @@ def install_python_taiga_deps(virtual_env):
     group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
     sudo('chown -R {group_user} {virtual_env}'.format(group_user=group_user, virtual_env=virtual_env))
 
-    pip_version = '19.1'
+    pip_version = '19.2.3'
 
     if is_ubuntu:
         install_venv0(python3=True, virtual_env=virtual_env, pip_version=pip_version)
@@ -94,6 +108,9 @@ def _migrate(virtual_env, taiga_root, skip_migrate, sample_data, remote_user, da
             params = get_postgres_params(parsed_connection_str)
 
             postgres = partial(sudo, user='postgres', shell_escape=False)
+
+            prompt('Have you set the password to "{database_uri}"'.format(
+                database_uri=database_uri))
 
             if postgres(
                 '''[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga'''.format(
@@ -181,11 +198,22 @@ def _install_backend(taiga_root, remote_user, circus_virtual_env,
     if not exists('/etc/systemd/system'):
         raise NotImplementedError('Non SystemD platforms')
 
+    if run('id {remote_user}'.format(remote_user=remote_user), warn_only=True, quiet=True).failed:
+        sudo('adduser {remote_user} --disabled-password --quiet --gecos ""'.format(remote_user=remote_user))
+    (uid, user), (gid, group) = get_user_group_tuples(remote_user)
+
     upload_template(taiga_dir('uwsgi.service'), '/etc/systemd/system/taiga-uwsgi.service',
-                    context={'TAIGA_BACK': '{}/taiga-back'.format(taiga_root),
-                             'VENV': virtual_env, 'PORT': 8001},
+                    context={
+                        'USER': user,
+                        'GROUP': group,
+                        'PORT': 8001,
+                        'TAIGA_BACK': '{}/taiga-back'.format(taiga_root),
+                        'UID': uid,
+                        'GID': gid,
+                        'VENV': virtual_env
+                    },
                     use_sudo=True)
-    restart_systemd('uwsgi')
+    restart_systemd('taiga-uwsgi')
 
     return virtual_env, database_uri
 
@@ -197,7 +225,7 @@ def _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user
     group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
     sudo('chown -R {group_user} {circus_virtual_env}'.format(group_user=group_user,
                                                              circus_virtual_env=circus_virtual_env))
-    print 'before install_venv0', circus_virtual_env
+    print('before install_venv0', circus_virtual_env)
     if is_ubuntu:
         install_venv0(python3=False, virtual_env=circus_virtual_env)
     else:
@@ -207,7 +235,7 @@ def _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user
         run('virtualenv "{virtual_env}"'.format(virtual_env=circus_virtual_env))
     with shell_env(VIRTUAL_ENV=circus_virtual_env, PATH="{}/bin:$PATH".format(circus_virtual_env)):
         run('pip2 install circus')
-    print 'after install_venv0', circus_virtual_env
+    print('after install_venv0', circus_virtual_env)
     conf_dir = '/etc/circus/conf.d'  # '/'.join((taiga_root, 'config'))
     sudo('mkdir -p {conf_dir}'.format(conf_dir=conf_dir))
     py_ver = run('{virtual_env}/bin/python --version'.format(virtual_env=circus_virtual_env)).partition(' ')[2][:3]
@@ -345,7 +373,7 @@ def _replace_configs(server_name, listen_port, taiga_root, email,
                 warn_only=True).failed:
                 with settings(prompts={'Password: ': parsed_connection_str.password}):
                     postgres('[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}'.format(
-                        params=params, dbname='taiga'))
+                        params='--owner={}'.format(params.rpartition('=')[2]), dbname='taiga'))
             # ENDTODO
 
             context['DATABASES'] = {
