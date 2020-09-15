@@ -1,2 +1,2 @@
 # from docker import *
-from bare import *
+from .bare import *

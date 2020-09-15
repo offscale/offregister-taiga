@@ -1,15 +1,13 @@
-from __future__ import print_function
-
 from platform import python_version_tuple
 
 from offregister_fab_utils.misc import get_user_group_tuples
 
-if python_version_tuple()[0] == '2':
+if python_version_tuple()[0] == "2":
     try:
-        from cStringIO import StringIO
+        from io import StringIO
     except ImportError:
-        from StringIO import StringIO
-    from urlparse import urlparse
+        from io import StringIO
+    from urllib.parse import urlparse
 else:
     from io import StringIO
     from urllib import parse as urlparse
@@ -38,66 +36,103 @@ from offregister_postgres.utils import get_postgres_params
 from offregister_python.ubuntu import install_venv0
 from offutils import generate_random_alphanum
 
-taiga_dir = partial(path.join, path.dirname(resource_filename('offregister_taiga', '__init__.py')), 'data')
+taiga_dir = partial(
+    path.join,
+    path.dirname(resource_filename("offregister_taiga", "__init__.py")),
+    "data",
+)
 
 
 def install_python_taiga_deps(virtual_env):
-    uname = run('uname -v')
+    uname = run("uname -v")
 
-    is_ubuntu = 'Ubuntu' in uname
+    is_ubuntu = "Ubuntu" in uname
 
     if is_ubuntu:
-        apt_depends('build-essential', 'binutils-doc', 'autoconf', 'flex', 'bison',
-                    'libjpeg-dev', 'libfreetype6-dev', 'zlib1g-dev', 'libzmq3-dev',
-                    'libgdbm-dev', 'libncurses5-dev', 'automake', 'libtool',
-                    'libffi-dev', 'curl', 'git', 'tmux', 'gettext', 'libxml2-dev',
-                    'libxslt1-dev', 'libssl-dev', 'libffi-dev', 'libffi6')
-    elif uname.startswith('Darwin'):
-        run('brew install libxml2 libxslt')
+        apt_depends(
+            "build-essential",
+            "binutils-doc",
+            "autoconf",
+            "flex",
+            "bison",
+            "libjpeg-dev",
+            "libfreetype6-dev",
+            "zlib1g-dev",
+            "libzmq3-dev",
+            "libgdbm-dev",
+            "libncurses5-dev",
+            "automake",
+            "libtool",
+            "libffi-dev",
+            "curl",
+            "git",
+            "tmux",
+            "gettext",
+            "libxml2-dev",
+            "libxslt1-dev",
+            "libssl-dev",
+            "libffi-dev",
+            "libffi6",
+        )
+    elif uname.startswith("Darwin"):
+        run("brew install libxml2 libxslt")
     else:
         raise NotImplementedError(uname)
 
-    sudo('mkdir -p {virtual_env}'.format(virtual_env=virtual_env))
-    group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
-    sudo('chown -R {group_user} {virtual_env}'.format(group_user=group_user, virtual_env=virtual_env))
+    sudo("mkdir -p {virtual_env}".format(virtual_env=virtual_env))
+    group_user = run(
+        """printf '%s:%s' "$USER" $(id -gn)""", shell_escape=False, quiet=True
+    )
+    sudo(
+        "chown -R {group_user} {virtual_env}".format(
+            group_user=group_user, virtual_env=virtual_env
+        )
+    )
 
-    pip_version = '19.2.3'
+    pip_version = "19.2.3"
 
     if is_ubuntu:
         install_venv0(python3=True, virtual_env=virtual_env, pip_version=pip_version)
     else:
-        run('python3 -m venv "{virtual_env}" '.format(virtual_env=virtual_env),
-            shell_escape=False)
+        run(
+            'python3 -m venv "{virtual_env}" '.format(virtual_env=virtual_env),
+            shell_escape=False,
+        )
 
-    with shell_env(VIRTUAL_ENV=virtual_env, PATH='{}/bin:$PATH'.format(virtual_env)), cd('taiga-back'):
+    with shell_env(
+        VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)
+    ), cd("taiga-back"):
         # run("sed -i '0,/lxml==3.5.0b1/s//lxml==3.5.0/' requirements.txt")
-        run('pip3 install -U pip')
-        run('pip3 --version; python3 --version')
+        run("pip3 install -U pip")
+        run("pip3 --version; python3 --version")
 
         if not is_ubuntu:
-            run('STATIC_DEPS=true pip3 install lxml')
+            run("STATIC_DEPS=true pip3 install lxml")
 
-        run('pip3 install -U setuptools')
-        run('pip3 install --no-cache-dir cffi')
-        run('pip3 install --no-cache-dir cairocffi')
-        run('pip3 install -r requirements.txt')
+        run("pip3 install -U setuptools")
+        run("pip3 install --no-cache-dir cffi")
+        run("pip3 install --no-cache-dir cairocffi")
+        run("pip3 install -r requirements.txt")
     return virtual_env
 
 
-def _migrate(virtual_env, taiga_root, skip_migrate, sample_data, remote_user, database_uri):
+def _migrate(
+    virtual_env, taiga_root, skip_migrate, sample_data, remote_user, database_uri
+):
     if skip_migrate:
         return virtual_env
 
-    with shell_env(VIRTUAL_ENV=virtual_env, PATH='{}/bin:$PATH'.format(virtual_env)
-                   ), cd('{taiga_root}/taiga-back'.format(taiga_root=taiga_root)):
+    with shell_env(
+        VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)
+    ), cd("{taiga_root}/taiga-back".format(taiga_root=taiga_root)):
         DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': 'mydatabase',
-                'USER': 'mydatabaseuser',
-                'PASSWORD': 'mypassword',
-                'HOST': '127.0.0.1',
-                'PORT': '5432',
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": "mydatabase",
+                "USER": "mydatabaseuser",
+                "PASSWORD": "mypassword",
+                "HOST": "127.0.0.1",
+                "PORT": "5432",
             }
         }
 
@@ -107,319 +142,459 @@ def _migrate(virtual_env, taiga_root, skip_migrate, sample_data, remote_user, da
             # TODO: Put this all back in offregister-postgres
             params = get_postgres_params(parsed_connection_str)
 
-            postgres = partial(sudo, user='postgres', shell_escape=False)
+            postgres = partial(sudo, user="postgres", shell_escape=False)
 
-            prompt('Have you set the password to "{database_uri}"'.format(
-                database_uri=database_uri))
+            prompt(
+                'Have you set the password to "{database_uri}"'.format(
+                    database_uri=database_uri
+                )
+            )
 
             if postgres(
-                '''[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga'''.format(
-                    database_uri=database_uri),
-                warn_only=True).failed:
-                with settings(prompts={'Password: ': parsed_connection_str.password}):
-                    postgres('[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}'.format(
-                        params=params, dbname='taiga'))
+                """[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga""".format(
+                    database_uri=database_uri
+                ),
+                warn_only=True,
+            ).failed:
+                with settings(prompts={"Password: ": parsed_connection_str.password}):
+                    postgres(
+                        "[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}".format(
+                            params=params, dbname="taiga"
+                        )
+                    )
             # ENDTODO
 
-            DATABASES['default']['NAME'] = 'taiga'
-            DATABASES['default']['USER'] = parsed_connection_str.username
-            DATABASES['default']['PASSWORD'] = parsed_connection_str.password
-            DATABASES['default']['HOST'] = parsed_connection_str.hostname
-            DATABASES['default']['PORT'] = parsed_connection_str.port or DATABASES['default']['PORT']
+            DATABASES["default"]["NAME"] = "taiga"
+            DATABASES["default"]["USER"] = parsed_connection_str.username
+            DATABASES["default"]["PASSWORD"] = parsed_connection_str.password
+            DATABASES["default"]["HOST"] = parsed_connection_str.hostname
+            DATABASES["default"]["PORT"] = (
+                parsed_connection_str.port or DATABASES["default"]["PORT"]
+            )
 
             # TODO: Use my Django settings.py parser/emitter
-            append('settings/local.py', 'DATABASES = {}'.format(dumps(DATABASES, sort_keys=True)))
+            append(
+                "settings/local.py",
+                "DATABASES = {}".format(dumps(DATABASES, sort_keys=True)),
+            )
 
-        run('python3 manage.py migrate --noinput')
-        run('python3 manage.py compilemessages')
-        run('python3 manage.py collectstatic --noinput')
+        run("python3 manage.py migrate --noinput")
+        run("python3 manage.py compilemessages")
+        run("python3 manage.py collectstatic --noinput")
 
-        run('python3 manage.py loaddata initial_user')
-        run('python3 manage.py loaddata initial_project_templates')
+        run("python3 manage.py loaddata initial_user")
+        run("python3 manage.py loaddata initial_project_templates")
 
         if sample_data:
-            run('python3 manage.py sample_data')
-        run('python3 manage.py rebuild_timeline --purge')
+            run("python3 manage.py sample_data")
+        run("python3 manage.py rebuild_timeline --purge")
 
     return virtual_env
 
 
 def _install_frontend(taiga_root=None, **kwargs):
-    sudo('mkdir -p {root}/logs'.format(root=taiga_root))
-    group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
-    sudo('chown -R {group_user} {root}'.format(group_user=group_user, root=taiga_root))
+    sudo("mkdir -p {root}/logs".format(root=taiga_root))
+    group_user = run(
+        """printf '%s:%s' "$USER" $(id -gn)""", shell_escape=False, quiet=True
+    )
+    sudo("chown -R {group_user} {root}".format(group_user=group_user, root=taiga_root))
 
     with cd(taiga_root):
-        clone_or_update(team='taigaio', repo='taiga-front')
+        clone_or_update(team="taigaio", repo="taiga-front")
         # Compile it here if you prefer
-        if not exists('taiga-front/dist'):
-            clone_or_update(team='taigaio', repo='taiga-front-dist')
-            run('ln -s {root}/taiga-front-dist/dist {root}/taiga-front/dist'.format(root=taiga_root))
-            run('ln -s {root}/taiga-front-dist/dist/conf.example.json {root}/taiga-front/dist/conf.json'.format(
-                root=taiga_root
-            ))
+        if not exists("taiga-front/dist"):
+            clone_or_update(team="taigaio", repo="taiga-front-dist")
+            run(
+                "ln -s {root}/taiga-front-dist/dist {root}/taiga-front/dist".format(
+                    root=taiga_root
+                )
+            )
+            run(
+                "ln -s {root}/taiga-front-dist/dist/conf.example.json {root}/taiga-front/dist/conf.json".format(
+                    root=taiga_root
+                )
+            )
 
-    if not kwargs.get('skip_nginx'):
-        sudo('mkdir -p /etc/nginx/sites-enabled')
+    if not kwargs.get("skip_nginx"):
+        sudo("mkdir -p /etc/nginx/sites-enabled")
 
-        upload_template(taiga_dir('taiga.nginx.conf'),
-                        '/etc/nginx/sites-enabled/{server_name}.conf'.format(server_name=kwargs['SERVER_NAME']),
-                        context={'TAIGA_ROOT': taiga_root,
-                                 'LISTEN_PORT': kwargs['LISTEN_PORT'],
-                                 'SERVER_NAME': kwargs['SERVER_NAME']},
-                        use_sudo=True)
+        upload_template(
+            taiga_dir("taiga.nginx.conf"),
+            "/etc/nginx/sites-enabled/{server_name}.conf".format(
+                server_name=kwargs["SERVER_NAME"]
+            ),
+            context={
+                "TAIGA_ROOT": taiga_root,
+                "LISTEN_PORT": kwargs["LISTEN_PORT"],
+                "SERVER_NAME": kwargs["SERVER_NAME"],
+            },
+            use_sudo=True,
+        )
 
 
-def _install_backend(taiga_root, remote_user, circus_virtual_env,
-                     virtual_env, database=True, database_uri=''):
+def _install_backend(
+    taiga_root,
+    remote_user,
+    circus_virtual_env,
+    virtual_env,
+    database=True,
+    database_uri="",
+):
     # apt_depends('circus')
-    uname = run('uname -v')
-    is_ubuntu = 'Ubuntu' in uname
-    home = run('echo $HOME')
+    uname = run("uname -v")
+    is_ubuntu = "Ubuntu" in uname
+    home = run("echo $HOME")
 
     if database:
         if is_ubuntu:
             postgres.install0()
 
-        user = {'user': 'taiga_user', 'password': generate_random_alphanum(16), 'dbname': 'taiga_db'}
-        database_uri = 'postgres://{user}:{password}@localhost/{dbname}'.format(**user)
+        user = {
+            "user": "taiga_user",
+            "password": generate_random_alphanum(16),
+            "dbname": "taiga_db",
+        }
+        database_uri = "postgres://{user}:{password}@localhost/{dbname}".format(**user)
 
-        created = postgres.setup_users(
-            create=(user,)
-        )
+        created = postgres.setup_users(create=(user,))
         assert created is not None
     elif not database_uri:
-        raise ValueError('Must create database or provide database_uri')
+        raise ValueError("Must create database or provide database_uri")
 
     with cd(taiga_root):
-        clone_or_update(team='taigaio', repo='taiga-back')
+        clone_or_update(team="taigaio", repo="taiga-back")
         install_python_taiga_deps(virtual_env)
 
     # UWSGI
     with shell_env(VIRTUAL_ENV=virtual_env, PATH="{}/bin:$PATH".format(virtual_env)):
-        run('pip3 install uwsgi')
+        run("pip3 install uwsgi")
 
-    if not exists('/etc/systemd/system'):
-        raise NotImplementedError('Non SystemD platforms')
+    if not exists("/etc/systemd/system"):
+        raise NotImplementedError("Non SystemD platforms")
 
-    if run('id {remote_user}'.format(remote_user=remote_user), warn_only=True, quiet=True).failed:
-        sudo('adduser {remote_user} --disabled-password --quiet --gecos ""'.format(remote_user=remote_user))
+    if run(
+        "id {remote_user}".format(remote_user=remote_user), warn_only=True, quiet=True
+    ).failed:
+        sudo(
+            'adduser {remote_user} --disabled-password --quiet --gecos ""'.format(
+                remote_user=remote_user
+            )
+        )
     (uid, user), (gid, group) = get_user_group_tuples(remote_user)
 
     upload_template(
-        taiga_dir('uwsgi.service'),
-        '/etc/systemd/system/taiga-uwsgi.service',
+        taiga_dir("uwsgi.service"),
+        "/etc/systemd/system/taiga-uwsgi.service",
         context={
-            'USER': user,
-            'GROUP': group,
-            'PORT': 8001,
-            'TAIGA_BACK': '{}/taiga-back'.format(taiga_root),
-            'UID': uid,
-            'GID': gid,
-            'VENV': virtual_env
+            "USER": user,
+            "GROUP": group,
+            "PORT": 8001,
+            "TAIGA_BACK": "{}/taiga-back".format(taiga_root),
+            "UID": uid,
+            "GID": gid,
+            "VENV": virtual_env,
         },
-        use_sudo=True
+        use_sudo=True,
     )
-    restart_systemd('taiga-uwsgi')
+    restart_systemd("taiga-uwsgi")
 
     return virtual_env, database_uri
 
     # return _setup_circus(circus_virtual_env, database_uri, home, is_ubuntu, remote_user, taiga_root, uname)
 
 
-def _setup_circus(circus_virtual_env, taiga_virtual_env, database_uri, home, is_ubuntu, remote_user, taiga_root, uname):
-    sudo('mkdir -p {circus_virtual_env}'.format(circus_virtual_env=circus_virtual_env))
-    group_user = run('''printf '%s:%s' "$USER" $(id -gn)''', shell_escape=False, quiet=True)
-    sudo('chown -R {group_user} {circus_virtual_env}'.format(group_user=group_user,
-                                                             circus_virtual_env=circus_virtual_env))
+def _setup_circus(
+    circus_virtual_env,
+    taiga_virtual_env,
+    database_uri,
+    home,
+    is_ubuntu,
+    remote_user,
+    taiga_root,
+    uname,
+):
+    sudo("mkdir -p {circus_virtual_env}".format(circus_virtual_env=circus_virtual_env))
+    group_user = run(
+        """printf '%s:%s' "$USER" $(id -gn)""", shell_escape=False, quiet=True
+    )
+    sudo(
+        "chown -R {group_user} {circus_virtual_env}".format(
+            group_user=group_user, circus_virtual_env=circus_virtual_env
+        )
+    )
     if is_ubuntu:
         install_venv0(python3=True, virtual_env=circus_virtual_env)
     else:
         run('python3 -m venv "{virtual_env}"'.format(virtual_env=circus_virtual_env))
-    with shell_env(VIRTUAL_ENV=circus_virtual_env, PATH="{}/bin:$PATH".format(circus_virtual_env)):
-        run('pip install circus')
-    conf_dir = '/etc/circus/conf.d'  # '/'.join((taiga_root, 'config'))
-    sudo('mkdir -p {conf_dir}'.format(conf_dir=conf_dir))
-    py_ver = run('{virtual_env}/bin/python --version'.format(virtual_env=taiga_virtual_env)).partition(' ')[2][:3]
-    upload_template(taiga_dir('circus.ini'), '{conf_dir}/'.format(conf_dir=conf_dir),
-                    context={'HOME': taiga_root,
-                             'USER': remote_user,
-                             'VENV': taiga_virtual_env,
-                             'PYTHON_VERSION': py_ver},
-                    use_sudo=True)
-    circusd_context = {'CONF_DIR': conf_dir, 'CIRCUS_VENV': circus_virtual_env}
-    if uname.startswith('Darwin'):
-        upload_template(taiga_dir('circusd.launchd.xml'),
-                        '{home}/Library/LaunchAgents/io.readthedocs.circus.plist'.format(home=home),
-                        context=circusd_context)
-    elif exists('/etc/systemd/system'):
-        upload_template(taiga_dir('circusd.service'), '/etc/systemd/system/', context=circusd_context, use_sudo=True)
+    with shell_env(
+        VIRTUAL_ENV=circus_virtual_env, PATH="{}/bin:$PATH".format(circus_virtual_env)
+    ):
+        run("pip install circus")
+    conf_dir = "/etc/circus/conf.d"  # '/'.join((taiga_root, 'config'))
+    sudo("mkdir -p {conf_dir}".format(conf_dir=conf_dir))
+    py_ver = run(
+        "{virtual_env}/bin/python --version".format(virtual_env=taiga_virtual_env)
+    ).partition(" ")[2][:3]
+    upload_template(
+        taiga_dir("circus.ini"),
+        "{conf_dir}/".format(conf_dir=conf_dir),
+        context={
+            "HOME": taiga_root,
+            "USER": remote_user,
+            "VENV": taiga_virtual_env,
+            "PYTHON_VERSION": py_ver,
+        },
+        use_sudo=True,
+    )
+    circusd_context = {"CONF_DIR": conf_dir, "CIRCUS_VENV": circus_virtual_env}
+    if uname.startswith("Darwin"):
+        upload_template(
+            taiga_dir("circusd.launchd.xml"),
+            "{home}/Library/LaunchAgents/io.readthedocs.circus.plist".format(home=home),
+            context=circusd_context,
+        )
+    elif exists("/etc/systemd/system"):
+        upload_template(
+            taiga_dir("circusd.service"),
+            "/etc/systemd/system/",
+            context=circusd_context,
+            use_sudo=True,
+        )
     else:
-        upload_template(taiga_dir('circusd.conf'), '/etc/init/', context=circusd_context, use_sudo=True)
+        upload_template(
+            taiga_dir("circusd.conf"),
+            "/etc/init/",
+            context=circusd_context,
+            use_sudo=True,
+        )
     return circus_virtual_env, database_uri
 
 
 def _install_events(taiga_root):
-    uname = run('uname -v')
-    is_ubuntu = 'Ubuntu' in uname
+    uname = run("uname -v")
+    is_ubuntu = "Ubuntu" in uname
 
-    if not cmd_avail('rabbitmqctl'):
+    if not cmd_avail("rabbitmqctl"):
         if is_ubuntu:
             rabbitmq.install0()
-        elif 'Darwin' in uname:
-            run('brew install rabbitmq')
-            if not cmd_avail('rabbitmqctl'):
-                append('$HOME/.bash_profile', 'export PATH=/usr/local/sbin:$PATH')
-                run('logout')
-            run('brew services start rabbitmq')
+        elif "Darwin" in uname:
+            run("brew install rabbitmq")
+            if not cmd_avail("rabbitmqctl"):
+                append("$HOME/.bash_profile", "export PATH=/usr/local/sbin:$PATH")
+                run("logout")
+            run("brew services start rabbitmq")
         else:
             raise NotImplementedError(uname)
-    user = 'taiga'
+    user = "taiga"
 
-    if sudo('rabbitmqctl list_users | grep -q {user}'.format(user=user), warn_only=True).succeeded:
+    if sudo(
+        "rabbitmqctl list_users | grep -q {user}".format(user=user), warn_only=True
+    ).succeeded:
         return
 
     password = rabbitmq.create_user1(rmq_user=user, rmq_vhost=user)
 
-    rmq_uri = 'amqp://{user}:{password}@localhost:5672/{user}'.format(user=user, password=password)
+    rmq_uri = "amqp://{user}:{password}@localhost:5672/{user}".format(
+        user=user, password=password
+    )
 
-    event_root = '{taiga_root}/taiga-events'.format(taiga_root=taiga_root)
-    clone_or_update(team='taigaio', repo='taiga-events', branch='master', to_dir=event_root)
+    event_root = "{taiga_root}/taiga-events".format(taiga_root=taiga_root)
+    clone_or_update(
+        team="taigaio", repo="taiga-events", branch="master", to_dir=event_root
+    )
     with cd(event_root):
-        build_node_app(kwargs=dict(npm_global_packages=('coffeescript',), node_version='lts'),
-                       run_cmd=run)
-    upload_template(taiga_dir('config.json'), event_root, context={'RMQ_URI': rmq_uri})
-
-    user = run('echo $USER', quiet=True)
-    if cmd_avail('systemctl'):
-        return systemd.install_upgrade_service(
-            service_name='taiga_events',
-            context={
-                'User': user, 'Group': run('id -gn') or user,
-                'Environments': '', 'WorkingDirectory': event_root,
-                'ExecStart': "/bin/bash -c 'PATH=/home/{user}/n/bin:$PATH /home/{user}/n/bin/coffee index.coffee'".format(
-                    user=user
-                )
-            }
+        build_node_app(
+            kwargs=dict(npm_global_packages=("coffeescript",), node_version="lts"),
+            run_cmd=run,
         )
-    elif uname.startswith('Darwin'):
+    upload_template(taiga_dir("config.json"), event_root, context={"RMQ_URI": rmq_uri})
+
+    user = run("echo $USER", quiet=True)
+    if cmd_avail("systemctl"):
+        return systemd.install_upgrade_service(
+            service_name="taiga_events",
+            context={
+                "User": user,
+                "Group": run("id -gn") or user,
+                "Environments": "",
+                "WorkingDirectory": event_root,
+                "ExecStart": "/bin/bash -c 'PATH=/home/{user}/n/bin:$PATH /home/{user}/n/bin/coffee index.coffee'".format(
+                    user=user
+                ),
+            },
+        )
+    elif uname.startswith("Darwin"):
         return macos.install_upgrade_service(
-            'io.taiga.events',
-            context={'PROGRAM': "/bin/bash -c 'PATH=/home/{user}/n/bin:$PATH /home/{user}/n/bin/coffee index.coffee'"}
+            "io.taiga.events",
+            context={
+                "PROGRAM": "/bin/bash -c 'PATH=/home/{user}/n/bin:$PATH /home/{user}/n/bin/coffee index.coffee'"
+            },
         )
     raise NotImplementedError(uname)
 
 
-def _replace_configs(server_name, listen_port, taiga_root, email,
-                     public_register_enabled, database_uri, force_clean=False):
-    protocol = 'https' if listen_port == 443 else 'http'
+def _replace_configs(
+    server_name,
+    listen_port,
+    taiga_root,
+    email,
+    public_register_enabled,
+    database_uri,
+    force_clean=False,
+):
+    protocol = "https" if listen_port == 443 else "http"
 
-    fqdn = '{protocol}://{server_name}'.format(protocol=protocol, server_name=server_name)
+    fqdn = "{protocol}://{server_name}".format(
+        protocol=protocol, server_name=server_name
+    )
 
     # Frontend
-    js_conf_dir = '/'.join((taiga_root, 'taiga-front', 'dist', 'js'))
-    conf_json_fname = '/'.join((js_conf_dir, 'conf.json'))
+    js_conf_dir = "/".join((taiga_root, "taiga-front", "dist", "js"))
+    conf_json_fname = "/".join((js_conf_dir, "conf.json"))
     if force_clean:
-        run('rm -rfv {}'.format(conf_json_fname))
+        run("rm -rfv {}".format(conf_json_fname))
     if not exists(conf_json_fname):
-        run('mkdir -p {conf_dir}'.format(conf_dir=js_conf_dir))
+        run("mkdir -p {conf_dir}".format(conf_dir=js_conf_dir))
 
-        with open(taiga_dir('conf.json')) as f:
+        with open(taiga_dir("conf.json")) as f:
             conf = load(f)
 
-        conf['api'] = '{fqdn}{path}'.format(fqdn=fqdn, path=conf['api'])
+        conf["api"] = "{fqdn}{path}".format(fqdn=fqdn, path=conf["api"])
 
-        event_config = '{taiga_root}/taiga-events/config.json'.format(taiga_root=taiga_root)
+        event_config = "{taiga_root}/taiga-events/config.json".format(
+            taiga_root=taiga_root
+        )
         if exists(event_config):
-            if not cmd_avail('jq'):
-                apt_depends('jq')
-            conf['eventsUrl'] = run('jq -r .url {event_config}'.format(event_config=event_config))
+            if not cmd_avail("jq"):
+                apt_depends("jq")
+            conf["eventsUrl"] = run(
+                "jq -r .url {event_config}".format(event_config=event_config)
+            )
         sio = StringIO()
         dump(conf, sio, indent=4, sort_keys=True)
         put(sio, conf_json_fname)
 
     # Backend
-    local_py = '{taiga_root}/taiga-back/settings/local.py'.format(taiga_root=taiga_root)
+    local_py = "{taiga_root}/taiga-back/settings/local.py".format(taiga_root=taiga_root)
     if force_clean:
-        run('rm -rfv {}'.format(local_py))
+        run("rm -rfv {}".format(local_py))
 
     stat = run("stat -c'%s' {}".format(local_py), warn_only=True)
 
     if stat.failed or int(stat) == 0:
-        context = {'FQDN': fqdn, 'PROTOCOL': protocol,
-                   'SERVER_NAME': server_name,
-                   'SECRET_KEY': generate_random_alphanum(52),
-                   'DEFAULT_FROM_EMAIL': email or 'no-reply@example.com',
-                   'PUBLIC_REGISTER_ENABLED': public_register_enabled
-                   }
-        mq = run('jq -r .url {taiga_root}/taiga-events/config.json'.format(taiga_root=taiga_root), warn_only=True)
+        context = {
+            "FQDN": fqdn,
+            "PROTOCOL": protocol,
+            "SERVER_NAME": server_name,
+            "SECRET_KEY": generate_random_alphanum(52),
+            "DEFAULT_FROM_EMAIL": email or "no-reply@example.com",
+            "PUBLIC_REGISTER_ENABLED": public_register_enabled,
+        }
+        mq = run(
+            "jq -r .url {taiga_root}/taiga-events/config.json".format(
+                taiga_root=taiga_root
+            ),
+            warn_only=True,
+        )
 
         if not mq.failed and mq:
-            context.update({
-                'EVENTS_PUSH_BACKEND': 'taiga.events.backends.rabbitmq.EventsPushBackend',
-                'EVENTS_PUSH_BACKEND_OPTIONS': {'url': mq}
-            })
+            context.update(
+                {
+                    "EVENTS_PUSH_BACKEND": "taiga.events.backends.rabbitmq.EventsPushBackend",
+                    "EVENTS_PUSH_BACKEND_OPTIONS": {"url": mq},
+                }
+            )
 
         if database_uri:
-            _databases = frozenset(('django.db.backends.postgresql'
-                                    'django.db.backends.mysql'
-                                    'django.db.backends.sqlite3'
-                                    'django.db.backends.oracle'))
+            _databases = frozenset(
+                (
+                    "django.db.backends.postgresql"
+                    "django.db.backends.mysql"
+                    "django.db.backends.sqlite3"
+                    "django.db.backends.oracle"
+                )
+            )
 
             parsed_connection_str = urlparse(database_uri)
             params = get_postgres_params(parsed_connection_str)
 
-            postgres = partial(sudo, user='postgres', shell_escape=False)
+            postgres = partial(sudo, user="postgres", shell_escape=False)
 
             if postgres(
-                '''[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga'''.format(
-                    database_uri=database_uri),
-                warn_only=True).failed:
-                with settings(prompts={'Password: ': parsed_connection_str.password}):
-                    postgres('[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}'.format(
-                        params='--owner={}'.format(params.rpartition('=')[2]), dbname='taiga'))
+                """[ -f ~/.bash_profile ] && source ~/.bash_profile ; psql -t -c '\l' "{database_uri}" | grep -qF taiga""".format(
+                    database_uri=database_uri
+                ),
+                warn_only=True,
+            ).failed:
+                with settings(prompts={"Password: ": parsed_connection_str.password}):
+                    postgres(
+                        "[ -f ~/.bash_profile ] && source ~/.bash_profile ; createdb {params} {dbname}".format(
+                            params="--owner={}".format(params.rpartition("=")[2]),
+                            dbname="taiga",
+                        )
+                    )
             # ENDTODO
 
-            context['DATABASES'] = {
-                'default': {
-                    'ENGINE': 'django.db.backends.postgresql',
-                    'NAME': parsed_connection_str.path and parsed_connection_str.path[1:] or 'taiga',
-                    'USER': parsed_connection_str.username,
-                    'PASSWORD': parsed_connection_str.password,
-                    'HOST': parsed_connection_str.hostname,
-                    'PORT': parsed_connection_str.port or 5432,
+            context["DATABASES"] = {
+                "default": {
+                    "ENGINE": "django.db.backends.postgresql",
+                    "NAME": parsed_connection_str.path
+                    and parsed_connection_str.path[1:]
+                    or "taiga",
+                    "USER": parsed_connection_str.username,
+                    "PASSWORD": parsed_connection_str.password,
+                    "HOST": parsed_connection_str.hostname,
+                    "PORT": parsed_connection_str.port or 5432,
                 }
             }
 
-        upload_template(taiga_dir('local.py'), local_py, context=context)
+        upload_template(taiga_dir("local.py"), local_py, context=context)
 
     stat = run("stat -c'%s' {}".format(local_py), warn_only=True)
     if stat.failed or int(stat) == 0:
-        raise IOError('{} doesn\'t exist; did you install?'.format(local_py))
+        raise IOError("{} doesn't exist; did you install?".format(local_py))
 
-    cmd = "sed -i -e 's|http://localhost:8000|{fqdn}|g' " \
-          "-e 's|localhost:8000|{server_name}|g' " \
-          "-e 's|http|{protocol}|g' " \
-          "-e 's|httphttp|http|g' " \
-          "-e 's|https\\+|https|g' ".format(fqdn=fqdn, server_name=server_name, protocol=protocol)
+    cmd = (
+        "sed -i -e 's|http://localhost:8000|{fqdn}|g' "
+        "-e 's|localhost:8000|{server_name}|g' "
+        "-e 's|http|{protocol}|g' "
+        "-e 's|httphttp|http|g' "
+        "-e 's|https\\+|https|g' ".format(
+            fqdn=fqdn, server_name=server_name, protocol=protocol
+        )
+    )
 
     # Back
-    run('for f in {taiga_root}/taiga-back/settings/*; do {cmd} "$f"; done'.format(cmd=cmd, taiga_root=taiga_root),
-        shell_escape=False, shell=False)
+    run(
+        'for f in {taiga_root}/taiga-back/settings/*; do {cmd} "$f"; done'.format(
+            cmd=cmd, taiga_root=taiga_root
+        ),
+        shell_escape=False,
+        shell=False,
+    )
 
     # Front
-    run('{cmd} {taiga_root}/taiga-front/app-loader/app-loader.coffee'.format(cmd=cmd, taiga_root=taiga_root))
+    run(
+        "{cmd} {taiga_root}/taiga-front/app-loader/app-loader.coffee".format(
+            cmd=cmd, taiga_root=taiga_root
+        )
+    )
 
     # Front (dist)
-    run('for f in {taiga_root}/taiga-front-dist/dist/*.json; do {cmd} "$f"; done'.format(
-        cmd=cmd, taiga_root=taiga_root), shell_escape=False, shell=False)
+    run(
+        'for f in {taiga_root}/taiga-front-dist/dist/*.json; do {cmd} "$f"; done'.format(
+            cmd=cmd, taiga_root=taiga_root
+        ),
+        shell_escape=False,
+        shell=False,
+    )
 
     # Everything
-    '''
+    """
     run('find {taiga_root} -type f -name .git -prune -o {extra} -exec {cmd} {end}'.format(
         taiga_root=taiga_root,
         extra='-exec grep -Iq . {} \\; -and -print',
         cmd=cmd,
         end='{} \;'
     ), shell_escape=False)
-    '''
+    """
