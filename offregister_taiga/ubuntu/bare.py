@@ -1,12 +1,12 @@
-from platform import python_version_tuple
+from sys import version
 
 from six import iteritems
 
-if python_version_tuple()[0] == "2":
+if version[0] == "2":
     try:
-        from io import StringIO
+        from cStringIO import StringIO
     except ImportError:
-        from io import StringIO
+        from StringIO import StringIO
 else:
     from io import StringIO
 

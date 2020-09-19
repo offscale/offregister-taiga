@@ -4,9 +4,9 @@ from offregister_fab_utils.misc import get_user_group_tuples
 
 if python_version_tuple()[0] == "2":
     try:
-        from io import StringIO
+        from cString import StringIO
     except ImportError:
-        from io import StringIO
+        from StringIO import StringIO
     from urllib.parse import urlparse
 else:
     from io import StringIO
