@@ -1,13 +1,13 @@
-from platform import python_version_tuple
+from sys import version
 
 from offregister_fab_utils.misc import get_user_group_tuples
 
-if python_version_tuple()[0] == "2":
+if version[0] == "2":
     try:
         from cString import StringIO
     except ImportError:
         from StringIO import StringIO
-    from urllib.parse import urlparse
+    from urlparse import urlparse
 else:
     from io import StringIO
     from urllib import parse as urlparse
