@@ -1,6 +1,7 @@
+from operator import methodcaller
 from sys import version
 
-from six import iteritems
+from offutils.util import iteritems
 
 if version[0] == "2":
     try:
