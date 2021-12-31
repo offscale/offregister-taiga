@@ -1,4 +1,3 @@
-from operator import methodcaller
 from sys import version
 
 from offutils.util import iteritems
@@ -16,19 +15,19 @@ from json import dump, load
 from os import path
 
 from fabric.api import run
-from fabric.context_managers import shell_env, cd
+from fabric.context_managers import cd, shell_env
 from fabric.contrib.files import append, exists
-from fabric.operations import sudo, put, get
+from fabric.operations import get, put, sudo
 from nginx_parse_emit.utils import DollarTemplate
 from offregister_fab_utils.apt import apt_depends
 from offregister_fab_utils.ubuntu.systemd import restart_systemd
 from pkg_resources import resource_filename
 
 from offregister_taiga.utils import (
-    _replace_configs,
-    _install_frontend,
     _install_backend,
     _install_events,
+    _install_frontend,
+    _replace_configs,
     _setup_circus,
 )
 

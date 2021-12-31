@@ -1,11 +1,11 @@
 from fabric.operations import run
 
 from offregister_taiga.utils import (
-    _replace_configs,
-    _migrate,
-    _install_frontend,
     _install_backend,
     _install_events,
+    _install_frontend,
+    _migrate,
+    _replace_configs,
 )
 
 

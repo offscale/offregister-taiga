@@ -13,28 +13,26 @@ else:
     from urllib import parse as urlparse
 
 from functools import partial
-from json import dump, load, dumps
+from json import dump, dumps, load
 from os import path
 
-from offregister_fab_utils.ubuntu.systemd import restart_systemd
-from pkg_resources import resource_filename
-
-from fabric.api import run, cd, put, shell_env
-from fabric.context_managers import settings
-from fabric.contrib.files import upload_template, exists, append
-from fabric.operations import sudo, prompt
-
 import offregister_rabbitmq.ubuntu as rabbitmq
+from fabric.api import cd, put, run, shell_env
+from fabric.context_managers import settings
+from fabric.contrib.files import append, exists, upload_template
+from fabric.operations import prompt, sudo
 from offregister_app_push.ubuntu import build_node_app
 from offregister_fab_utils import macos
 from offregister_fab_utils.apt import apt_depends
 from offregister_fab_utils.fs import cmd_avail
 from offregister_fab_utils.git import clone_or_update
 from offregister_fab_utils.ubuntu import systemd
+from offregister_fab_utils.ubuntu.systemd import restart_systemd
 from offregister_postgres import ubuntu as postgres
 from offregister_postgres.utils import get_postgres_params
 from offregister_python.ubuntu import install_venv0
 from offutils import generate_random_alphanum
+from pkg_resources import resource_filename
 
 taiga_dir = partial(
     path.join,
