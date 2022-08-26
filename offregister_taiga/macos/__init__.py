@@ -1,5 +1,3 @@
-from fabric.operations import run
-
 from offregister_taiga.utils import (
     _install_backend,
     _install_events,
@@ -15,7 +13,7 @@ def install0(*args, **kwargs):
     kwargs.setdefault("circus_virtual_env", "/opt/venvs/circus")
     kwargs.setdefault("EMAIL", "no-reply@example.com")
     kwargs.setdefault("public_register_enabled", True)
-    kwargs.setdefault("TAIGA_ROOT", run("printf $HOME", quiet=True))
+    kwargs.setdefault("TAIGA_ROOT", c.run("printf $HOME", hide=True).stdout)
     kwargs.setdefault("skip_migrate", False)
 
     _install_frontend(taiga_root=kwargs["TAIGA_ROOT"], **kwargs)

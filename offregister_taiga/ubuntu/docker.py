@@ -1,4 +1,3 @@
-from fabric.operations import run, sudo
 from offregister_docker import ubuntu as docker
 from offutils import generate_random_alphanum
 
@@ -11,26 +10,26 @@ def install0(*args, **kwargs):
 
 def setup_taiga1(SERVER_NAME, *args, **kwargs):
     password = kwargs.get("postgres_password", generate_random_alphanum(15))
-    run("echo {password} > $(mktemp postgres_passwordXXX)".format(password=password))
+    c.run("echo {password} > $(mktemp postgres_passwordXXX)".format(password=password))
 
-    sudo("mkdir -p /usr/src/taiga-back/media")
+    c.sudo("mkdir -p /usr/src/taiga-back/media")
 
-    run(
+    c.run(
         "docker run --name taiga-postgres -d -e POSTGRES_PASSWORD={password} postgres".format(
             password=password
         )
     )
-    run("docker run --name taiga-redis -d redis:3")
-    run("docker run --name taiga-rabbit -d --hostname taiga rabbitmq:3")
-    run("docker run --name taiga-celery -d --link taiga-rabbit:rabbit celery")
-    run(
+    c.run("docker run --name taiga-redis -d redis:3")
+    c.run("docker run --name taiga-rabbit -d --hostname taiga rabbitmq:3")
+    c.run("docker run --name taiga-celery -d --link taiga-rabbit:rabbit celery")
+    c.run(
         "docker run --name taiga-events -d --link taiga-rabbit:rabbit benhutchins/taiga-events"
     )
 
     # sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt
     # sudo openssl dhparam -out /etc/ssl/certs/dhparam.pem 2048
 
-    run(
+    c.run(
         "docker run -itd \
     --name taiga \
     --link taiga-postgres:postgres \
