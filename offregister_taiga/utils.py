@@ -19,7 +19,6 @@ from os import path
 import offregister_rabbitmq.ubuntu as rabbitmq
 from fabric.api import run
 from fabric.context_managers import settings
-from fabric.contrib.files import append, exists
 from fabric.operations import prompt
 from offregister_app_push.ubuntu import build_node_app
 from offregister_fab_utils import macos
@@ -32,6 +31,7 @@ from offregister_postgres import ubuntu as postgres
 from offregister_postgres.utils import get_postgres_params
 from offregister_python.ubuntu import install_venv0
 from offutils import generate_random_alphanum
+from patchwork.files import append, exists
 from pkg_resources import resource_filename
 
 taiga_dir = partial(
@@ -169,6 +169,8 @@ def _migrate(
 
             # TODO: Use my Django settings.py parser/emitter
             append(
+                c,
+                c.run,
                 "settings/local.py",
                 "DATABASES = {}".format(dumps(DATABASES, sort_keys=True)),
             )
@@ -384,7 +386,9 @@ def _install_events(taiga_root):
         elif "Darwin" in uname:
             c.run("brew install rabbitmq")
             if not cmd_avail(c, "rabbitmqctl"):
-                append("$HOME/.bash_profile", "export PATH=/usr/local/sbin:$PATH")
+                append(
+                    c, c.run, "$HOME/.bash_profile", "export PATH=/usr/local/sbin:$PATH"
+                )
                 c.run("logout")
             c.run("brew services start rabbitmq")
         else:

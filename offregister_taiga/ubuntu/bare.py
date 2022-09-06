@@ -14,7 +14,7 @@ from functools import partial
 from json import dump, load
 from os import path
 
-from fabric.contrib.files import append, exists
+from patchwork.files import append, exists
 from nginx_parse_emit.utils import DollarTemplate
 from offregister_fab_utils.apt import apt_depends
 from offregister_fab_utils.ubuntu.systemd import restart_systemd
@@ -42,13 +42,14 @@ def install0(*args, **kwargs):
     ):
         apt_depends(c, "curl")
         c.sudo("curl https://nginx.org/keys/nginx_signing.key | apt-key add -")
-        codename = c.run("lsb_release -cs")
+        codename = c.run("lsb_release -cs").stdout.rstrip()
         append(
+            c,
+            c.sudo,
             "/etc/apt/sources.list",
             "deb http://nginx.org/packages/ubuntu/ {codename} nginx".format(
                 codename=codename
             ),
-            use_sudo=True,
         )
 
         apt_depends(c, "nginx")
@@ -179,7 +180,7 @@ def reconfigure2(*args, **kwargs):
             ).exited
             != 0
         ):
-            append(back_config, install)
+            append(c, c.sudo, back_config, install)
 
     """
     sio = StringIO()
