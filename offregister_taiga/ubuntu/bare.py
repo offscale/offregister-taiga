@@ -14,10 +14,10 @@ from functools import partial
 from json import dump, load
 from os import path
 
-from patchwork.files import append, exists
 from nginx_parse_emit.utils import DollarTemplate
 from offregister_fab_utils.apt import apt_depends
 from offregister_fab_utils.ubuntu.systemd import restart_systemd
+from patchwork.files import append, exists
 from pkg_resources import resource_filename
 
 from offregister_taiga.utils import (
@@ -35,7 +35,7 @@ taiga_dir = partial(
 )
 
 
-def install0(*args, **kwargs):
+def install0(c, *args, **kwargs):
     if (
         c.run("dpkg -s {package}".format(package="nginx"), hide=True, warn=True).exited
         != 0
@@ -80,14 +80,14 @@ def install0(*args, **kwargs):
     return "installed taiga"
 
 
-def serve1(*args, **kwargs):
+def serve1(c, *args, **kwargs):
     restart_systemd("nginx")
     # restart_systemd('circusd')
     restart_systemd("taiga-uwsgi")
     return "served taiga"
 
 
-def reconfigure2(*args, **kwargs):
+def reconfigure2(c, *args, **kwargs):
     kwargs.setdefault("remote_user", "ubuntu")
     taiga_root = kwargs.get("TAIGA_ROOT", c.run("printf $HOME", hide=True).stdout)
     uname = c.run("uname -v").stdout.rstrip()

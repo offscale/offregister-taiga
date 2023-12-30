@@ -7,7 +7,7 @@ from offregister_taiga.utils import (
 )
 
 
-def install0(*args, **kwargs):
+def install0(c, *args, **kwargs):
     kwargs.setdefault("remote_user", "ubuntu")
     kwargs.setdefault("virtual_env", "/opt/venvs/taiga")
     kwargs.setdefault("circus_virtual_env", "/opt/venvs/circus")

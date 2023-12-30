@@ -2,13 +2,13 @@ from offregister_docker import ubuntu as docker
 from offutils import generate_random_alphanum
 
 
-def install0(*args, **kwargs):
+def install0(c, *args, **kwargs):
     docker.install_docker0()
     docker.install_docker_user1()
     docker.test_docker2()
 
 
-def setup_taiga1(SERVER_NAME, *args, **kwargs):
+def setup_taiga1(c, SERVER_NAME, *args, **kwargs):
     password = kwargs.get("postgres_password", generate_random_alphanum(15))
     c.run("echo {password} > $(mktemp postgres_passwordXXX)".format(password=password))
 
