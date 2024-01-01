@@ -104,8 +104,7 @@ package_name_verbatim = "offregister-taiga"
 package_name = package_name_verbatim.replace("-", "_")
 
 with open(
-    path.join(path.dirname(__file__), "README{extsep}md".format(extsep=extsep)),
-    "rt",
+    path.join(path.dirname(__file__), "README{extsep}md".format(extsep=extsep)), "rt"
 ) as fh:
     long_description = fh.read()
 
@@ -168,8 +167,8 @@ def main():
         author=__author__,
         author_email="807580+SamuelMarks@users.noreply.github.com",
         version=__version__,
-        description=__description__,
         url="https://github.com/offscale/{}".format(package_name_verbatim),
+        description=__description__,
         long_description=long_description,
         long_description_content_type="text/markdown",
         classifiers=[
@@ -193,10 +192,17 @@ def main():
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
         ],
+        license="(Apache-2.0 OR MIT OR CC0-1.0)",
+        license_files=["LICENSE-APACHE", "LICENSE-MIT", "LICENSE-CC0"],
         test_suite="{}{}tests".format(package_name, path.extsep),
         packages=find_packages(),
         package_dir={package_name: package_name},
-        install_requires=["fabric2", "paramiko"],
+        install_requires=[
+            "paramiko",
+            "invoke >= 2.0 ; python_version>='3.5'",
+            "fabric >= 2.7.1 ; python_version>='3.5'",
+            "fabric == 2.7.1 ; python_version<'3.5'",
+        ],
         data_files=[(data_install_dir(), list(map(data_join, listdir(data_join()))))],
     )
 
