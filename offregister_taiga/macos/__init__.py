@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from offregister_taiga.utils import (
     _install_backend,
     _install_events,

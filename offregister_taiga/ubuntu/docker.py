@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from offregister_docker import ubuntu as docker
 from offutils import generate_random_alphanum
 

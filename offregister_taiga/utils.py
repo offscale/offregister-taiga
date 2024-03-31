@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from sys import version
 
 from offregister_fab_utils.misc import get_user_group_tuples
